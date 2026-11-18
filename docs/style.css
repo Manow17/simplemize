@@ -116,6 +116,16 @@ h3 { font-size: 21px; line-height: 1.2; }
 .shot img { width: 100%; }
 .shot.pair { margin-top: 44px; }
 
+/* ---- PowerShell command ---- */
+.cmd { margin-top: 30px; max-width: 640px; }
+.cmd .label { margin-bottom: 8px; }
+.cmd-row { display: flex; align-items: stretch; border: 1.5px solid var(--ink); border-radius: 2px; background: var(--panel); }
+.cmd-row code { flex: 1; font-size: 14px; padding: 12px 14px; background: transparent; word-break: break-all; color: var(--ink); }
+.copy { font: 600 13px var(--mono); border: 0; border-left: 1.5px solid var(--ink); background: var(--ink); color: var(--bg); padding: 0 16px; cursor: pointer; }
+.copy:hover { background: var(--accent); color: var(--accent-ink); }
+.cmd-note { font-size: 14px; color: var(--ink3); margin: 8px 0 0; }
+.cmd-note a { color: var(--ink2); }
+
 /* ---- figures ---- */
 .figures { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1.5px solid var(--ink); margin-top: 64px; }
 .figures > div { padding: 18px 20px 4px; border-left: 1px solid var(--line); }

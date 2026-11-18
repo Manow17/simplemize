@@ -44,6 +44,22 @@
   }
   syncShots();
 
+  // ---- copy buttons -------------------------------------------------------------------
+  document.querySelectorAll('[data-copy]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var text = document.getElementById(b.getAttribute('data-copy')).textContent;
+      var done = function () { b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1600); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, function () { select(); });
+      } else select();
+      function select() {
+        var r = document.createRange(); r.selectNodeContents(document.getElementById(b.getAttribute('data-copy')));
+        var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+        b.textContent = 'Press Ctrl+C';
+      }
+    });
+  });
+
   // ---- figures ----------------------------------------------------------------------
   var isApp = function (t) { return t.group === 'Preinstalled apps'; };
   var counts = {

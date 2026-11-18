@@ -12,9 +12,9 @@ using Simplemize.Ui;
 [assembly: AssemblyDescription("A small, open-source Windows optimizer with a restore point before every change.")]
 [assembly: AssemblyProduct("Simplemize")]
 [assembly: AssemblyCopyright("MIT License")]
-[assembly: AssemblyVersion("1.0.1.0")]
-[assembly: AssemblyFileVersion("1.0.1.0")]
-[assembly: AssemblyInformationalVersion("1.0.1")]
+[assembly: AssemblyVersion("1.0.2.0")]
+[assembly: AssemblyFileVersion("1.0.2.0")]
+[assembly: AssemblyInformationalVersion("1.0.2")]
 // Compiled with csc directly, so state the target explicitly: it switches on .NET 4.8 behaviour (per-monitor DPI and so on).
 [assembly: System.Runtime.Versioning.TargetFramework(".NETFramework,Version=v4.8", FrameworkDisplayName = ".NET Framework 4.8")]
 

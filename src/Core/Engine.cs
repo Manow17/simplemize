@@ -211,6 +211,33 @@ namespace Simplemize
             Save();
         }
 
+        /// <summary>
+        /// Creates a restore point and records it (plus anything Simplemize had to fix to make it possible).
+        /// Used before applying, and by the "Create a restore point now" button.
+        /// </summary>
+        public RestorePointResult MakeRestorePoint(Action<Step> report)
+        {
+            var rp = Env.Sys.CreateRestorePoint(RestorePointName);
+            if (rp.TurnedOnSystemRestore)
+            {
+                Backup.SystemRestoreTurnedOn = Now() + " on " + (Environment.GetEnvironmentVariable("SystemDrive") ?? "C:");
+                report?.Invoke(new Step { Kind = StepKind.Info, Index = -1, Title = "System Restore was switched off for your system drive", Detail = "Simplemize turned it on so a restore point could be made. You can switch it off again in System Properties › System Protection." });
+            }
+            foreach (var note in rp.Notes)
+            {
+                Env.Log.Info(note);
+                report?.Invoke(new Step { Kind = StepKind.Info, Index = -1, Title = "Fixed so restore points work", Detail = note });
+            }
+            if (rp.Ok)
+            {
+                SessionRestorePoint = rp.Point;
+                if (!rp.Simulated)
+                    Backup.RestorePoints.Add(new RestoreRecord { At = Now(), Sequence = rp.Point.Sequence, Description = rp.Point.Description });
+            }
+            TrySave(out _);
+            return rp;
+        }
+
         static void Merge(BackupEntry entry, Change ch)
         {
             // Keep the very first original value: re-applying must never overwrite the real "before" state.
@@ -235,20 +262,14 @@ namespace Simplemize
             if (SessionRestorePoint == null)
             {
                 progress(new Step { Kind = StepKind.Running, Index = -1, Title = "Creating a restore point", Detail = "Windows can take up to a minute for this." });
-                var rp = Env.Sys.CreateRestorePoint(RestorePointName);
-                if (rp.TurnedOnSystemRestore)
-                {
-                    Backup.SystemRestoreTurnedOn = Now() + " on " + (Environment.GetEnvironmentVariable("SystemDrive") ?? "C:");
-                    TrySave(out _);
-                    progress(new Step { Kind = StepKind.Info, Index = -1, Title = "System Restore was switched off for your system drive", Detail = "Simplemize turned it on so a restore point could be made. You can switch it off again in System Properties › System Protection." });
-                }
+                var rp = MakeRestorePoint(s => progress(s));
                 if (rp.Ok)
                 {
-                    SessionRestorePoint = rp.Point;
                     r.RestorePoint = rp.Point;
-                    Backup.RestorePoints.Add(new RestoreRecord { At = Now(), Sequence = rp.Point.Sequence, Description = rp.Point.Description });
-                    TrySave(out _);
-                    progress(new Step { Kind = StepKind.Ok, Index = -1, Title = "Restore point created", Detail = "“" + rp.Point.Description + "” · " + rp.Point.Created.ToString("d MMM yyyy, HH:mm", CultureInfo.InvariantCulture) });
+                    if (rp.Simulated)
+                        progress(new Step { Kind = StepKind.Ok, Index = -1, Title = "Restore point simulated (sandbox)", Detail = "Nothing was created in Windows, so it won't appear in System Restore. Outside the sandbox this is a real restore point." });
+                    else
+                        progress(new Step { Kind = StepKind.Ok, Index = -1, Title = "Restore point created", Detail = "“" + rp.Point.Description + "” · " + rp.Point.Created.ToString("d MMM yyyy, HH:mm", CultureInfo.InvariantCulture) });
                 }
                 else
                 {

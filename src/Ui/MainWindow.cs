@@ -16,7 +16,7 @@ namespace Simplemize.Ui
 {
     public sealed partial class MainWindow : Window
     {
-        public const string Version = "1.0.1";
+        public const string Version = "1.0.2";
 
         readonly Engine engine;
         readonly Env env;

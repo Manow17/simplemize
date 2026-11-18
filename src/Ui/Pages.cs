@@ -522,9 +522,29 @@ namespace Simplemize.Ui
             steps.Children.Add(Kit.Step("3", StepText("Click Next, then ", "Finish", ". The PC restarts and rewinds. This takes 5 to 20 minutes; don't switch it off.")));
             c.Children.Add(steps);
             var open = Kit.Button("Open System Restore", "Secondary", () => Open(Path.Combine(Environment.SystemDirectory, "rstrui.exe")));
-            open.HorizontalAlignment = HorizontalAlignment.Left;
-            open.Margin = new Thickness(34, 6, 0, 0);
-            c.Children.Add(open);
+            var make = Kit.Button("Create a restore point now", "Secondary", null,
+                "Makes a restore point right away, without changing anything else. Useful to check that restore points work on this PC.");
+            make.Click += async (s, e) =>
+            {
+                if (busy) return;
+                busy = true;
+                make.IsEnabled = false;
+                make.Content = "Creating… (up to a minute)";
+                UpdateBar();
+                var res = await Task.Run(() => engine.MakeRestorePoint(null));
+                busy = false;
+                UpdateBar();
+                restorePoints = null;   // reload the list
+                ShowPage("undo");
+                if (!res.Ok) Toast("Couldn't create a restore point. " + res.Message, "Bad");
+                else if (res.Simulated) Toast("Sandbox: a restore point was simulated. Nothing was created in Windows.");
+                else Toast("Restore point created: “" + res.Point.Description + "” at " + res.Point.Created.ToString("HH:mm", CultureInfo.InvariantCulture) + "." + (res.Notes.Count > 0 ? " " + string.Join(" ", res.Notes) : ""));
+            };
+            make.IsEnabled = CanChange && !busy;
+            make.Margin = new Thickness(10, 0, 0, 0);
+            var restoreButtons = Kit.Row(open, make);
+            restoreButtons.Margin = new Thickness(34, 6, 0, 0);
+            c.Children.Add(restoreButtons);
 
             // C — when windows won't start
             c.Children.Add(GroupHeader("C — If Windows won't start", out _, 46));
@@ -579,6 +599,8 @@ namespace Simplemize.Ui
                 return;
             }
             box.Children.Add(Kit.Label(ours.Count > 0 ? "Restore points on this PC" : "Restore points on this PC (none from Simplemize yet)", "Ink3", 10).Margin(0, 0, 0, 6));
+            if (env.Sandbox && !env.Demo && ours.Any(r => r.Description.EndsWith("(sandbox)")))
+                box.Children.Add(Kit.Note("Sandbox: points marked (sandbox) are simulated. They don't exist in Windows and won't appear in System Restore.", "Accent", 12).Margin(0, 0, 0, 8));
             foreach (var r in ours.Concat(other))
             {
                 bool mine = ours.Contains(r);

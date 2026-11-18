@@ -51,6 +51,10 @@ namespace Simplemize
         public string Message;
         public RestorePointInfo Point;
         public bool TurnedOnSystemRestore;
+        /// <summary>Sandbox: nothing was created in Windows.</summary>
+        public bool Simulated;
+        /// <summary>Things Simplemize had to fix so restore points work (shown to the user and logged).</summary>
+        public List<string> Notes = new List<string>();
     }
 
     /// <summary>
@@ -405,10 +409,38 @@ namespace Simplemize
                 Thread.Sleep(900);
                 var fake = new RestorePointInfo { Sequence = (uint)(900 + sbRestorePoints.Count), Description = Demo ? description : description + " (sandbox)", Created = DateTime.Now };
                 sbRestorePoints.Add(fake);
-                log.Info("[sandbox] pretended to create restore point \"" + description + "\"");
+                log.Info("[sandbox] pretended to create restore point \"" + description + "\" (nothing was created in Windows)");
                 res.Ok = true;
+                res.Simulated = !Demo;
                 res.Point = fake;
                 return res;
+            }
+
+            string drive = (Environment.GetEnvironmentVariable("SystemDrive") ?? "C:") + "\\";
+
+            // 1. A policy (from an organisation or another tuning tool) can switch System Restore off. We don't override policies.
+            const string policy = @"SOFTWARE\Policies\Microsoft\Windows NT\SystemRestore";
+            if (reg.Get(Hive.HKLM, policy, "DisableSR")?.Data is int dsr && dsr == 1)
+            {
+                res.Message = "System Restore is switched off by a policy on this PC (\"Turn off System Restore\", set by an organisation or another tuning tool). " +
+                              "Simplemize doesn't override policies. To allow restore points, delete the value DisableSR in HKLM\\" + policy + ", or set that policy to Not configured in gpedit.msc.";
+                log.Error("restore point blocked by policy DisableSR=1");
+                return res;
+            }
+
+            // 2. Restore points need the Volume Shadow Copy services. Other "optimizers" often disable them.
+            foreach (var svc in new[] { "VSS", "swprv" })
+            {
+                var s = GetService(svc);
+                if (s != null && s.Start == 4)
+                {
+                    try
+                    {
+                        SetServiceStart(svc, 3, false);
+                        res.Notes.Add("The " + (svc == "VSS" ? "Volume Shadow Copy" : "Microsoft Software Shadow Copy Provider") + " service was disabled. Simplemize set it back to Manual (the Windows default), because restore points can't be made without it.");
+                    }
+                    catch (Exception ex) { log.Warn("could not re-enable " + svc + ": " + ex.Message); }
+                }
             }
 
             const string srKey = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore";
@@ -416,32 +448,45 @@ namespace Simplemize
             var oldFreq = reg.Get(Hive.HKLM, srKey, freqName);
             try
             {
-                // Windows silently skips restore points if one was made in the last 24 h. Lift that limit for this one call.
+                // 3. Windows silently skips restore points if one was made in the last 24 h. Lift that limit for this one call.
                 reg.Set(Hive.HKLM, srKey, freqName, RegistryValueKind.DWord, 0);
                 uint before = ListRestorePoints().Select(p => p.Sequence).DefaultIfEmpty(0u).Max();
 
                 uint rc = InvokeCreate(description);
+                log.Info("CreateRestorePoint returned " + Code(rc));
                 if (rc != 0)
                 {
-                    string drive = (Environment.GetEnvironmentVariable("SystemDrive") ?? "C:") + "\\";
-                    log.Info("restore point failed with " + rc + "; trying to turn on System Restore for " + drive);
+                    // 4. Most often System Restore is simply off for the system drive (or has no space). Fix that and try again.
+                    log.Info("trying to turn on System Restore for " + drive);
                     if (InvokeEnable(drive) == 0)
                     {
                         res.TurnedOnSystemRestore = true;
-                        log.Info("System Restore was off for " + drive + " and has been turned on.");
-                        rc = InvokeCreate(description);
+                        log.Info("System Restore is on for " + drive);
                     }
+                    var grew = EnsureShadowStorage(drive);
+                    if (grew != null) res.Notes.Add(grew);
+                    Thread.Sleep(1500);
+                    rc = InvokeCreate(description);
+                    log.Info("second attempt returned " + Code(rc));
                 }
                 if (rc != 0)
                 {
-                    res.Message = "Windows refused to create a restore point (code " + rc + "). System Restore may be disabled by a policy or there is not enough free space.";
+                    res.Message = Explain(rc);
                     return res;
                 }
 
-                var made = ListRestorePoints().Where(p => p.Sequence > before).OrderByDescending(p => p.Sequence).FirstOrDefault();
+                // 5. Windows can take a moment to list it.
+                RestorePointInfo made = null;
+                for (int i = 0; i < 6 && made == null; i++)
+                {
+                    if (i > 0) Thread.Sleep(1500);
+                    made = ListRestorePoints().Where(p => p.Sequence > before).OrderByDescending(p => p.Sequence).FirstOrDefault();
+                }
                 if (made == null)
                 {
-                    res.Message = "Windows reported success, but no new restore point appeared.";
+                    res.Message = "Windows said the restore point was created, but it doesn't show up in the list. " +
+                                  "This usually means System Restore is limited by a policy or has no disk space reserved. " +
+                                  "Open System Properties › System Protection, select your system drive, click Configure and make sure protection is on with some space reserved.";
                     return res;
                 }
                 res.Ok = true;
@@ -462,6 +507,75 @@ namespace Simplemize
                     else reg.Set(Hive.HKLM, srKey, freqName, oldFreq.Kind, oldFreq.Data);
                 }
                 catch { }
+            }
+        }
+
+        static string Code(uint rc) => rc + " (0x" + rc.ToString("X8") + ")";
+
+        /// <summary>Turns a CreateRestorePoint result into something a person can act on.</summary>
+        static string Explain(uint rc)
+        {
+            switch (rc)
+            {
+                case 1058:
+                case 0x80070422:
+                    return "Windows couldn't make a restore point because a service it needs is disabled (code " + Code(rc) + "). " +
+                           "Open services.msc and set \"Volume Shadow Copy\" and \"Microsoft Software Shadow Copy Provider\" to Manual.";
+                case 112:
+                case 0x80070070:
+                    return "There isn't enough free space on your system drive for a restore point (code " + Code(rc) + "). Free some space and try again.";
+                case 1460:
+                case 0x800705B4:
+                    return "Windows took too long to make the restore point (code " + Code(rc) + "). Try again in a minute.";
+                default:
+                    if ((rc & 0xFFFF0000) == 0x80040000)
+                        return "The Volume Shadow Copy service reported a problem (code " + Code(rc) + "). " +
+                               "Restarting the PC usually clears it. If it keeps happening, another backup or optimizer tool may be holding it.";
+                    return "Windows refused to create a restore point (code " + Code(rc) + "). " +
+                           "Check System Properties › System Protection: your system drive should have protection turned on with some disk space reserved.";
+            }
+        }
+
+        /// <summary>
+        /// If System Restore has (almost) no disk space reserved on the system drive, give it 5 %. Never shrinks
+        /// an existing reservation (shrinking would delete older restore points). Returns a note, or null.
+        /// </summary>
+        string EnsureShadowStorage(string drive)
+        {
+            try
+            {
+                string letter = drive.TrimEnd('\\');
+                string volumeId = null;
+                long size = 0;
+                using (var s = new ManagementObjectSearcher("SELECT DeviceID, Capacity FROM Win32_Volume WHERE DriveLetter = '" + letter + "'"))
+                    foreach (ManagementObject o in s.Get())
+                        using (o)
+                        {
+                            volumeId = Convert.ToString(o["DeviceID"]);
+                            size = Convert.ToInt64(o["Capacity"]);
+                        }
+                if (volumeId == null) return null;
+                var guid = Regex.Match(volumeId, @"Volume\{[0-9a-fA-F-]+\}").Value;
+                ulong max = 0;
+                bool found = false;
+                using (var s = new ManagementObjectSearcher("SELECT Volume, MaxSpace FROM Win32_ShadowStorage"))
+                    foreach (ManagementObject o in s.Get())
+                        using (o)
+                        {
+                            if (guid.Length == 0 || Convert.ToString(o["Volume"]).IndexOf(guid, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                            found = true;
+                            max = Convert.ToUInt64(o["MaxSpace"]);
+                        }
+                const ulong oneGb = 1UL << 30;
+                if (!found || max >= oneGb || size <= 0) return null;
+                if ((ulong)(size / 20) <= max) return null;   // 5 % would not be more than now
+                int rc = RunChange(Exe("vssadmin.exe"), "Resize ShadowStorage /For=" + letter + " /On=" + letter + " /MaxSize=5%", out _);
+                return rc == 0 ? "System Restore had almost no disk space reserved on " + letter + ". Simplemize reserved 5% so restore points fit." : null;
+            }
+            catch (Exception ex)
+            {
+                log.Warn("could not check System Restore disk space: " + ex.Message);
+                return null;
             }
         }
 

@@ -55,7 +55,16 @@
       <a class="btn" href="https://github.com/Manow17/simplemize/releases/latest/download/Simplemize.exe">Download Simplemize.exe</a>
       <a class="btn ghost" href="https://github.com/Manow17/simplemize">View the source</a>
     </div>
-    <p class="meta mono">v<span data-version>1.0.1</span> · single 300 KB file · no installer, no account, no telemetry</p>
+    <p class="meta mono">v<span data-version>1.0.2</span> · single 309 KB file · no installer, no account, no telemetry</p>
+
+    <div class="cmd">
+      <span class="label">Or skip the "Windows protected your PC" pop-up: paste this into PowerShell</span>
+      <div class="cmd-row">
+        <code id="cmd">irm https://manow17.github.io/simplemize/run.ps1 | iex</code>
+        <button type="button" class="copy" data-copy="cmd">Copy</button>
+      </div>
+      <p class="cmd-note">It downloads the latest release from GitHub, checks it against the published SHA-256 checksum, and starts it. <a href="run.ps1">Read the script</a> first, it's short.</p>
+    </div>
 
     <figure class="shot">
       <img src="img/overview-light.png" data-light="img/overview-light.png" data-dark="img/overview-dark.png"
@@ -188,7 +197,10 @@
     <div class="faq">
       <details>
         <summary>Windows says "Windows protected your PC". Is something wrong?</summary>
-        <p>No. SmartScreen shows that for any new app that isn't signed with a paid certificate yet. Click <b>More info</b>, then <b>Run anyway</b>. If you'd rather check first, the full source is on GitHub and the exe is built from it with a single script.</p>
+        <p>No. SmartScreen shows that for any app downloaded in a browser that isn't signed with a paid code-signing certificate and hasn't built up a download history yet. You have two options:</p>
+        <p><b>Skip it:</b> press <kbd>Win</kbd>+<kbd>X</kbd>, open <b>Terminal</b> (or PowerShell) and paste <code>irm https://manow17.github.io/simplemize/run.ps1 | iex</code>. Files downloaded by PowerShell aren't tagged as "from the internet", so there's no pop-up. The script checks the file's SHA-256 before starting it.</p>
+        <p><b>Or click through it:</b> click <b>More info</b>, then <b>Run anyway</b>.</p>
+        <p>Either way, Windows still asks for administrator rights (the blue or yellow prompt). That one is normal for any tool that changes system settings. If you'd rather check everything first, the full source is on GitHub and the exe is built from it with a single script.</p>
       </details>
       <details>
         <summary>Why does it ask for administrator rights?</summary>
