@@ -388,6 +388,28 @@ namespace Simplemize
             return r;
         }
 
+        /// <summary>
+        /// A registry key Simplemize created can only be removed once it's empty. If another saved change still
+        /// has a value in it (two tweaks sharing one policy key), that change takes over the job, so whichever is
+        /// undone last removes the key and nothing is left behind.
+        /// </summary>
+        void HandOverCreatedKey(Change done, HashSet<Change> reverted)
+        {
+            if (string.IsNullOrEmpty(done.CreatedKey) || done.Hive == null) return;
+            if (!Enum.TryParse(done.Hive, out Hive hive) || !Env.Reg.KeyExists(hive, done.CreatedKey)) return;
+            var key = done.CreatedKey.Trim('\\');
+            var heir = Backup.Entries.SelectMany(e => e.Changes).FirstOrDefault(x =>
+                !reverted.Contains(x) && !ReferenceEquals(x, done)
+                && (x.Type == "reg" || x.Type == "regpair" || x.Type == "regbits")
+                && string.Equals(x.Hive, done.Hive, StringComparison.OrdinalIgnoreCase)
+                && x.Path != null
+                && (x.Path.Trim('\\').Equals(key, StringComparison.OrdinalIgnoreCase) || x.Path.Trim('\\').StartsWith(key + "\\", StringComparison.OrdinalIgnoreCase))
+                && string.IsNullOrEmpty(x.CreatedKey));
+            if (heir == null) return;
+            heir.CreatedKey = done.CreatedKey;
+            Env.Log.Info("key " + done.CreatedKey + " is still in use; it will be removed when " + heir.Describe() + " is undone");
+        }
+
         public sealed class UndoResult
         {
             public int Undone, Failed;
@@ -398,6 +420,7 @@ namespace Simplemize
         public UndoResult Undo(IEnumerable<string> ids)
         {
             var res = new UndoResult();
+            var reverted = new HashSet<Change>();
             foreach (var id in ids.ToList())
             {
                 var e = EntryFor(id);
@@ -420,7 +443,13 @@ namespace Simplemize
                         Env.Log.Error("undo " + id + ": refused unexpected entry " + c.Describe());
                         continue;
                     }
-                    try { Reverter.Revert(Env, c); Env.Log.Info("restored " + c.Describe()); }
+                    try
+                    {
+                        Reverter.Revert(Env, c);
+                        reverted.Add(c);
+                        Env.Log.Info("restored " + c.Describe());
+                        HandOverCreatedKey(c, reverted);
+                    }
                     catch (Exception ex)
                     {
                         keep.Insert(0, c);

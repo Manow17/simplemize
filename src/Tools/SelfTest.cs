@@ -209,7 +209,26 @@ namespace Simplemize
                 env.Sys.SetServiceStart(eu.Name, eu.Start, eu.Delayed);
             }
 
-            // 7. install, reinstall and uninstall, into a scratch folder (never the real Start menu)
+            // 7. two tweaks sharing a key that didn't exist: whichever is undone last removes it (both orders)
+            const string sharedRoot = @"Software\Simplemize-SelfTest";
+            const string shared = sharedRoot + @"\Shared";
+            foreach (var order in new[] { new[] { "test.a", "test.b" }, new[] { "test.b", "test.a" } })
+                foreach (bool oneCall in new[] { false, true })
+                {
+                    var tA = new Tweak { Id = "test.a", Title = "test a", Section = Section.Extras, Group = "t", Actions = { new RegSet(Hive.HKCU, shared, "A", RegistryValueKind.DWord, 1) } };
+                    var tB = new Tweak { Id = "test.b", Title = "test b", Section = Section.Extras, Group = "t", Actions = { new RegSet(Hive.HKCU, shared, "B", RegistryValueKind.DWord, 1) } };
+                    var envT = new Env { Reg = env.Reg, Sys = env.Sys, Log = env.Log, Info = env.Info, Sandbox = true, IsAdmin = env.IsAdmin, UserSid = env.UserSid,
+                                         DataDir = Path.Combine(Path.GetTempPath(), "simplemize-shared-" + Guid.NewGuid().ToString("N").Substring(0, 8)) };
+                    var engT = new Engine(envT, new List<Tweak> { tA, tB });
+                    engT.Apply(new[] { tA }, s => { }, m => true);
+                    engT.Apply(new[] { tB }, s => { }, m => true);
+                    if (oneCall) engT.Undo(order);
+                    else { engT.Undo(new[] { order[0] }); new Engine(envT, new List<Tweak> { tA, tB }).Undo(new[] { order[1] }); }
+                    Check(!sb.KeyExists(Hive.HKCU, sharedRoot), "shared new key removed after undoing " + string.Join(" then ", order) + (oneCall ? " together" : " separately"));
+                    try { Directory.Delete(envT.DataDir, true); } catch { }
+                }
+
+            // 8. install, reinstall and uninstall, into a scratch folder (never the real Start menu)
             var iroot = Path.Combine(Path.GetTempPath(), "simplemize-install-" + Guid.NewGuid().ToString("N").Substring(0, 8));
             var ip = new Installer.Paths
             {
