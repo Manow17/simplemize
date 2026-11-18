@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Microsoft.Win32;
 
 namespace Simplemize
 {
@@ -56,6 +57,11 @@ namespace Simplemize
             Phases(env, engine, catalog, Line, ref fails, ref passes, ref skips);
             Compare(sandbox, fresh, Line, ref fails);
 
+            // ---------------- scenarios from the code review ----------------
+            Line("");
+            Line("================ SCENARIOS ================");
+            Scenarios(env, engine, catalog, sandbox, Line, ref fails, ref passes);
+
             // ---------------- safety guards and read-only probes ----------------
             Line("");
             Line("================ GUARDS & PROBES ================");
@@ -98,6 +104,115 @@ namespace Simplemize
             return fails == 0 ? 0 : 1;
         }
 
+        static void Scenarios(Env env, Engine engine, IList<Tweak> catalog, SandboxRegistry sb, Action<string> Line, ref int fails, ref int passes)
+        {
+            int f = 0, p = 0;
+            void Check(bool ok, string what) { if (ok) { p++; Line("  PASS  " + what); } else { f++; Line("  FAIL  " + what); } }
+            Tweak T(string id) => catalog.First(t => t.Id == id);
+            string Str(Hive h, string path, string name) => sb.Get(h, path, name)?.Data?.ToString();
+
+            // 1. cleanup age rules, on a real scratch folder this test creates and owns
+            var root = Path.Combine(Path.GetTempPath(), "simplemize-selftest-" + Guid.NewGuid().ToString("N").Substring(0, 8));
+            var dir = Path.Combine(root, "Temp");
+            try
+            {
+                Directory.CreateDirectory(dir);
+                var old = Path.Combine(dir, "old.bin"); File.WriteAllBytes(old, new byte[100]);
+                File.SetCreationTime(old, DateTime.Now.AddDays(-3)); File.SetLastWriteTime(old, DateTime.Now.AddDays(-3));
+                var copied = Path.Combine(dir, "extracted.msi"); File.WriteAllBytes(copied, new byte[200]);
+                File.SetLastWriteTime(copied, DateTime.Now.AddDays(-30));   // old "modified", fresh "created"
+                var fresh = Path.Combine(dir, "fresh.tmp"); File.WriteAllBytes(fresh, new byte[300]);
+                Check(SystemOps.Measure(dir, TimeSpan.FromHours(24)) == 100, "cleanup counts only files old by both dates (100 bytes)");
+                var realOps = new SystemOps(new RealRegistry(), env.Log, false, env.IsAdmin);
+                long freed = realOps.Clean(dir, TimeSpan.FromHours(24));
+                Check(freed == 100 && !File.Exists(old) && File.Exists(copied) && File.Exists(fresh), "real cleanup deletes the old file, keeps the freshly extracted and the new one");
+
+                var link = Path.Combine(root, "junction", "Temp");
+                Directory.CreateDirectory(Path.GetDirectoryName(link));
+                var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", "/c mklink /J \"" + link + "\" \"" + dir + "\"") { UseShellExecute = false, CreateNoWindow = true };
+                using (var pr = System.Diagnostics.Process.Start(psi)) pr.WaitForExit(10000);
+                if (Directory.Exists(link)) Check(!SystemOps.IsCleanable(link), "a Temp folder that is a junction is refused");
+                Check(!SystemOps.IsCleanable("Temp") && !SystemOps.IsCleanable(@"..\Temp"), "relative paths are refused");
+                Check(!SystemOps.IsCleanable(@"\\server\share\Temp"), "network paths are refused");
+                try { Directory.Delete(link); } catch { }
+            }
+            catch (Exception ex) { Check(false, "cleanup scenario crashed: " + ex.Message); }
+            finally { try { Directory.Delete(root, true); } catch { } }
+
+            // 2. a planted backup entry that writes somewhere the tweak never touches is refused
+            const string ifeo = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\sethc.exe";
+            engine.Backup.Entries.Add(new BackupEntry
+            {
+                TweakId = "game.dvr", Title = "planted", AppliedAt = "x",
+                Changes = { new Change { Type = "reg", Hive = "HKLM", Path = ifeo, Name = "Debugger", Existed = true, Kind = "String", Value = "cmd.exe" } }
+            });
+            engine.Backup.Entries.Add(new BackupEntry
+            {
+                TweakId = "no.such.tweak", Title = "planted 2", AppliedAt = "x",
+                Changes = { new Change { Type = "svc", Name = "WinDefend", OldStart = 4 } }
+            });
+            var u = engine.Undo(new[] { "game.dvr", "no.such.tweak" });
+            Check(sb.Get(Hive.HKLM, ifeo, "Debugger") == null, "planted registry entry was not written");
+            Check(env.Sys.GetService("WinDefend") == null || env.Sys.GetService("WinDefend").Start != 4, "planted service entry was not applied");
+            Check(u.Failed == 2, "both planted entries reported as refused");
+            engine.Backup.Entries.RemoveAll(e => e.Title.StartsWith("planted"));
+            engine.TrySave(out _);
+
+            // 3. another account's per-user value is left for that account
+            engine.Backup.Entries.Add(new BackupEntry
+            {
+                TweakId = "game.mode", Title = "other user", AppliedAt = "x",
+                Changes = { new Change { Type = "reg", Hive = "HKCU", Path = @"Software\Microsoft\GameBar", Name = "AutoGameModeEnabled", Existed = true, Kind = "DWord", Value = "0", User = "S-1-5-21-1-2-3-1001" } }
+            });
+            Check(!engine.HasUndoFor("game.mode"), "another account's entry isn't offered for undo");
+            var before = Str(Hive.HKCU, @"Software\Microsoft\GameBar", "AutoGameModeEnabled");
+            engine.Undo(new[] { "game.mode" });
+            Check(Str(Hive.HKCU, @"Software\Microsoft\GameBar", "AutoGameModeEnabled") == before && engine.EntryFor("game.mode") != null, "another account's value is kept, not written here");
+            engine.Backup.Entries.RemoveAll(e => e.Title == "other user");
+            engine.TrySave(out _);
+
+            // 4. Sticky Keys: only the shortcut bit changes; undo puts back only that bit
+            const string sk = @"Control Panel\Accessibility\StickyKeys";
+            var skBefore = sb.Get(Hive.HKCU, sk, "Flags");
+            sb.Set(Hive.HKCU, sk, "Flags", RegistryValueKind.String, "511");      // Sticky Keys itself switched ON
+            engine.Apply(new[] { T("input.stickykeys") }, s => { }, m => true);
+            Check(Str(Hive.HKCU, sk, "Flags") == "507", "Sticky Keys stays on, only the shortcut bit is cleared (511 -> 507)");
+            sb.Set(Hive.HKCU, sk, "Flags", RegistryValueKind.String, "491");      // the user changes another option afterwards
+            engine.Undo(new[] { "input.stickykeys" });
+            Check(Str(Hive.HKCU, sk, "Flags") == "495", "undo restores only the shortcut bit and keeps the later change (491 -> 495)");
+            if (skBefore == null) sb.DeleteValue(Hive.HKCU, sk, "Flags"); else sb.Set(Hive.HKCU, sk, "Flags", skBefore.Kind, skBefore.Data);
+
+            // 5. DirectX pair: undo removes only our pair and keeps settings added later
+            const string dx = @"Software\Microsoft\DirectX\UserGpuPreferences";
+            var dxBefore = sb.Get(Hive.HKCU, dx, "DirectXUserGlobalSettings");
+            if (env.Info.IsWin11)
+            {
+                sb.Set(Hive.HKCU, dx, "DirectXUserGlobalSettings", RegistryValueKind.String, "VRROptimizeEnable=0;");
+                engine.Apply(new[] { T("gpu.windowed") }, s => { }, m => true);
+                var mid = Str(Hive.HKCU, dx, "DirectXUserGlobalSettings") ?? "";
+                Check(mid.Contains("VRROptimizeEnable=0;") && mid.Contains("SwapEffectUpgradeEnable=1;"), "apply keeps the existing graphics settings");
+                sb.Set(Hive.HKCU, dx, "DirectXUserGlobalSettings", RegistryValueKind.String, mid + "AutoHDREnable=1;");
+                engine.Undo(new[] { "gpu.windowed" });
+                var after = Str(Hive.HKCU, dx, "DirectXUserGlobalSettings") ?? "";
+                Check(after.Contains("AutoHDREnable=1;") && after.Contains("VRROptimizeEnable=0;") && !after.Contains("SwapEffectUpgradeEnable"), "undo removes only its own pair (\"" + after + "\")");
+                if (dxBefore == null) sb.DeleteValue(Hive.HKCU, dx, "DirectXUserGlobalSettings"); else sb.Set(Hive.HKCU, dx, "DirectXUserGlobalSettings", dxBefore.Kind, dxBefore.Data);
+            }
+
+            // 6. a service the user disabled is never raised to Manual
+            var eu = env.Sys.GetService("edgeupdate") ?? env.Sys.GetService("MapsBroker");
+            if (eu != null)
+            {
+                env.Sys.SetServiceStart(eu.Name, 4, false);
+                engine.Apply(new[] { T("svc.manual") }, s => { }, m => true);
+                Check(env.Sys.GetService(eu.Name).Start == 4, eu.Name + " stays Disabled after \"services to Manual\"");
+                engine.Undo(new[] { "svc.manual" });
+                env.Sys.SetServiceStart(eu.Name, eu.Start, eu.Delayed);
+            }
+
+            fails += f;
+            passes += p;
+        }
+
         static void Compare(SandboxRegistry sandbox, List<string> expected, Action<string> Line, ref int fails)
         {
             var now = sandbox.Describe().OrderBy(x => x).ToList();
@@ -136,7 +251,7 @@ namespace Simplemize
                 TState back = after;
                 if (t.Revertible)
                 {
-                    if (engine.EntryFor(t.Id) == null) problems.Add("no backup entry recorded");
+                    if (engine.EntryFor(t.Id) == null && before != TState.Active && before != TState.NotApplicable) problems.Add("no backup entry recorded");
                     var u = engine.Undo(new[] { t.Id });
                     if (u.Failed > 0) problems.Add("undo failed: " + string.Join(" | ", u.Errors));
                     back = t.Evaluate(env);

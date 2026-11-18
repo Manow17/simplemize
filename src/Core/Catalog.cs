@@ -191,14 +191,15 @@ namespace Simplemize
                 Title = "No Sticky Keys pop-up",
                 Summary = "Stops the Sticky Keys, Filter Keys and Toggle Keys prompts that appear when you tap Shift five times or hold a key in a game.",
                 Gain = "No more being thrown back to the desktop mid-game.",
-                TradeOff = "Only the shortcuts are turned off. The features themselves can still be switched on in Settings › Accessibility › Keyboard.",
+                TradeOff = "Only the keyboard shortcuts are turned off. If you use Sticky Keys or Filter Keys, they stay on, and every other accessibility setting is kept. Takes effect after you sign out.",
                 Affects = A("input"),
+                After = After.SignOut,
                 Presets = All3,
                 Actions =
                 {
-                    Sz(CU, @"Control Panel\Accessibility\StickyKeys", "Flags", "506", "\"510\""),
-                    Sz(CU, @"Control Panel\Accessibility\Keyboard Response", "Flags", "122", "\"126\""),
-                    Sz(CU, @"Control Panel\Accessibility\ToggleKeys", "Flags", "58", "\"62\""),
+                    new RegBitsClear(CU, @"Control Panel\Accessibility\StickyKeys", "Flags", 0x4, 510, "Shift five times shortcut"),
+                    new RegBitsClear(CU, @"Control Panel\Accessibility\Keyboard Response", "Flags", 0x4, 126, "hold Right Shift shortcut"),
+                    new RegBitsClear(CU, @"Control Panel\Accessibility\ToggleKeys", "Flags", 0x4, 62, "hold Num Lock shortcut"),
                 },
             });
 
@@ -214,6 +215,11 @@ namespace Simplemize
                 Affects = A("network delay"),
                 Presets = GS,
                 Unavailable = e => nagle.Count == 0 ? "No connected network adapter found" : null,
+                // Adapters can come and go between sessions: undo may restore any adapter's two values.
+                AlsoOwns = c => c.Type == "reg" && c.Hive == "HKLM"
+                    && c.Path != null && c.Path.StartsWith(@"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\", StringComparison.OrdinalIgnoreCase)
+                    && c.Path.IndexOf('\\', @"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\".Length) < 0
+                    && (string.Equals(c.Name, "TcpAckFrequency", StringComparison.OrdinalIgnoreCase) || string.Equals(c.Name, "TCPNoDelay", StringComparison.OrdinalIgnoreCase)),
             };
             nagleTweak.Actions.AddRange(nagle);
             list.Add(nagleTweak);
@@ -713,11 +719,11 @@ namespace Simplemize
                 Presets = All3,
                 Actions =
                 {
-                    new ServiceStart("MapsBroker", "Downloaded Maps Manager", 3),
-                    new ServiceStart("TrkWks", "Distributed Link Tracking Client", 3),
-                    new ServiceStart("PcaSvc", "Program Compatibility Assistant", 3),
-                    new ServiceStart("edgeupdate", "Microsoft Edge Update", 3),
-                    new ServiceStart("gupdate", "Google Update", 3),
+                    new ServiceStart("MapsBroker", "Downloaded Maps Manager", 3, lowerOnly: true),
+                    new ServiceStart("TrkWks", "Distributed Link Tracking Client", 3, lowerOnly: true),
+                    new ServiceStart("PcaSvc", "Program Compatibility Assistant", 3, lowerOnly: true),
+                    new ServiceStart("edgeupdate", "Microsoft Edge Update", 3, lowerOnly: true),
+                    new ServiceStart("gupdate", "Google Update", 3, lowerOnly: true),
                 },
             });
 

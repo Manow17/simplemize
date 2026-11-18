@@ -4,7 +4,7 @@
 
 Simplemize is a small, free, open-source optimizer for Windows 10 and 11. It debloats Windows, trims what runs in the background and tunes it for lower input delay. It makes a System Restore point before it touches anything, saves the original value of every setting it changes, and explains every switch in plain words.
 
-**[Download Simplemize.exe](https://github.com/Manow17/simplemize/releases/latest/download/Simplemize.exe)** · [Website](https://manow17.github.io/simplemize/) · single 280 KB file, no installer, no account, no telemetry
+**[Download Simplemize.exe](https://github.com/Manow17/simplemize/releases/latest/download/Simplemize.exe)** · [Website](https://manow17.github.io/simplemize/) · single 300 KB file, no installer, no account, no telemetry
 
 ![The Simplemize window](docs/img/overview-light.png)
 

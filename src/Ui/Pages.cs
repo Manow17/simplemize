@@ -385,7 +385,7 @@ namespace Simplemize.Ui
 
                 var sw = new ToggleButton { IsChecked = it.Enabled, VerticalAlignment = VerticalAlignment.Top, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 1, 0, 0) };
                 sw.SetResourceReference(StyleProperty, "Switch");
-                sw.IsEnabled = CanChange && (!it.NeedsAdmin || env.IsAdmin || env.Sandbox);
+                sw.IsEnabled = CanChange && (!it.NeedsAdmin || env.IsAdmin || env.Sandbox) && !(env.ForeignUser && it.ApprovedHive == Hive.HKCU);
                 sw.ToolTip = it.Enabled ? "On: starts when you sign in" : "Off: doesn't start automatically";
                 System.Windows.Automation.AutomationProperties.SetName(sw, it.DisplayName);
                 var item = it;
@@ -442,7 +442,7 @@ namespace Simplemize.Ui
 
             // A — undo with Simplemize
             c.Children.Add(GroupHeader("A — Undo with Simplemize", out var cnt, 34));
-            var entries = engine.Backup.Entries.OrderByDescending(e => e.AppliedAt).ToList();
+            var entries = engine.UndoableEntries.OrderByDescending(e => e.AppliedAt).ToList();
             cnt.Text = entries.Count == 0 ? "" : entries.Count + (entries.Count == 1 ? " change" : " changes");
             c.Children.Add(Kit.Text("Simplemize saved the original value of every setting below. Undo puts back exactly what was there before, no guessing.", 13.5, "Ink2").Margin(0, 14, 0, 6));
             if (entries.Count == 0)
@@ -507,6 +507,14 @@ namespace Simplemize.Ui
             var rpBox = new StackPanel { Margin = new Thickness(0, 0, 0, 18) };
             FillRestorePoints(rpBox);
             c.Children.Add(rpBox);
+            if (engine.Backup.SystemRestoreTurnedOn != null)
+            {
+                var srNote = Kit.Note("System Restore was off, and Simplemize turned it on (" + engine.Backup.SystemRestoreTurnedOn + ") so it could make a restore point. To switch it off again: Start › type \u201Ccreate a restore point\u201D › Configure. Switching it off deletes the restore points on that drive.", "Ink2", 12.5);
+                srNote.Margin = new Thickness(0, 0, 0, 18);
+                srNote.MaxWidth = 680;
+                srNote.HorizontalAlignment = HorizontalAlignment.Left;
+                c.Children.Add(srNote);
+            }
 
             var steps = new StackPanel();
             steps.Children.Add(Kit.Step("1", StepText("Press ", "Win + R", ", type ", "rstrui", " and press Enter. Or use the button below.")));

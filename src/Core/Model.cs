@@ -26,6 +26,13 @@ namespace Simplemize
         public string DataDir;
         /// <summary>Installed app package names. Null until the (slow) package scan has finished.</summary>
         public HashSet<string> Apps;
+        /// <summary>SID of the account Simplemize runs as. Per-user (HKCU) backups are tagged with it.</summary>
+        public string UserSid;
+        /// <summary>True when Simplemize was elevated with a different account than the one signed in:
+        /// then HKCU is that other account's, so per-user changes are blocked.</summary>
+        public bool ForeignUser;
+        /// <summary>When set, Simplemize may look but not change anything (e.g. its data folder isn't safe).</summary>
+        public string BlockedReason;
     }
 
     public sealed class ActionLine
@@ -44,6 +51,8 @@ namespace Simplemize
         /// <summary>Applies the change and returns what is needed to undo it (null if nothing was changed).</summary>
         public abstract Change Apply(Env env);
         public virtual bool Revertible => true;
+        /// <summary>Could this action have produced <paramref name="c"/>? Undo only touches what the catalog can explain.</summary>
+        public virtual bool Owns(Change c) => false;
     }
 
     public sealed class Tweak
@@ -69,8 +78,24 @@ namespace Simplemize
         public Func<Env, string> Unavailable;  // reason it can't be used on this PC, or null
         public Func<Env, string> Warning;      // situational heads-up (laptop, hard drive), or null
         public Func<Env, long> Measure;        // bytes a cleanup would free
+        public Func<Change, bool> AlsoOwns;    // extra undo matches (actions built per PC, e.g. network adapters)
 
         public bool Revertible => !OneShot && Actions.All(a => a.Revertible);
+
+        public bool TouchesUserHive => Actions.OfType<RegSet>().Any(a => a.Hive == Hive.HKCU);
+
+        /// <summary>Why this tweak can't be used right now, or null.</summary>
+        public string Reason(Env env)
+        {
+            string r;
+            try { r = Unavailable?.Invoke(env); }
+            catch (Exception ex) { r = ex.Message; }
+            if (r == null && env.ForeignUser && TouchesUserHive)
+                r = "Simplemize is running as a different Windows account than the one signed in, so this per-user setting would change the wrong account.";
+            return r;
+        }
+
+        public bool Owns(Change c) => Actions.Any(a => a.Owns(c)) || (AlsoOwns != null && AlsoOwns(c));
 
         public string UndoText
         {
@@ -105,7 +130,7 @@ namespace Simplemize
     /// <summary>A record of what something looked like before Simplemize changed it. Stored in backup.json.</summary>
     public sealed class Change
     {
-        public string Type { get; set; }        // reg | svc | task | power | hiber | app | onedrive
+        public string Type { get; set; }        // reg | regpair | regbits | svc | task | power | hiber | app | onedrive
         public string Hive { get; set; }
         public string Path { get; set; }
         public string Name { get; set; }
@@ -118,11 +143,19 @@ namespace Simplemize
         public bool OldEnabled { get; set; }
         public string OldScheme { get; set; }
         public string NewScheme { get; set; }
+        /// <summary>For HKCU values: the account (SID) they belong to.</summary>
+        public string User { get; set; }
+        /// <summary>regpair: the key inside the string. regbits: the bit mask.</summary>
+        public string Part { get; set; }
+        /// <summary>regpair: the old value of that key (null = wasn't there). regbits: "1" if the bits were set.</summary>
+        public string PartOld { get; set; }
+        /// <summary>regbits: the value Windows uses when the registry value is missing.</summary>
+        public string PartDefault { get; set; }
 
         [System.Web.Script.Serialization.ScriptIgnore]
-        public string TargetKey => (Type + "|" + Hive + "|" + Path + "|" + Name).ToLowerInvariant();
+        public string TargetKey => (Type + "|" + Hive + "|" + Path + "|" + Name + "|" + User + "|" + Part).ToLowerInvariant();
 
-        public static Change ForReg(Hive hive, string path, string name, RegValue before, string createdKey) => new Change
+        public static Change ForReg(Env env, Hive hive, string path, string name, RegValue before, string createdKey) => new Change
         {
             Type = "reg",
             Hive = hive.ToString(),
@@ -131,7 +164,8 @@ namespace Simplemize
             Existed = before != null,
             Kind = before?.Kind.ToString(),
             Value = before?.Encoded,
-            CreatedKey = createdKey
+            CreatedKey = createdKey,
+            User = hive == Simplemize.Hive.HKCU ? env.UserSid : null,
         };
 
         public string Describe()
@@ -139,6 +173,8 @@ namespace Simplemize
             switch (Type)
             {
                 case "reg": return Hive + "\\" + Path + " › " + (Name == "" ? "(Default)" : Name) + (Existed ? " ← " + Value : " ← (remove)");
+                case "regpair": return Hive + "\\" + Path + " › " + Name + " › " + Part + (PartOld != null ? " ← " + PartOld : " ← (remove)");
+                case "regbits": return Hive + "\\" + Path + " › " + Name + " bits " + Part + " ← " + (PartOld == "1" ? "set" : "clear");
                 case "svc": return "service " + Name + " ← " + ServiceInfo.ModeName(OldStart, OldDelayed);
                 case "task": return "task " + Path + " ← " + (OldEnabled ? "enabled" : "disabled");
                 case "power": return "power plan ← " + OldScheme;
@@ -150,8 +186,22 @@ namespace Simplemize
 
     public static class Reverter
     {
+        /// <summary>Removes a key Simplemize created, if it is still empty. Only keys on the value's own path qualify.</summary>
+        static void CleanCreatedKey(Env env, Hive hive, Change c)
+        {
+            if (string.IsNullOrEmpty(c.CreatedKey)) return;
+            var path = c.Path.Trim('\\');
+            var created = c.CreatedKey.Trim('\\');
+            if (!(path.Equals(created, StringComparison.OrdinalIgnoreCase) || path.StartsWith(created + "\\", StringComparison.OrdinalIgnoreCase))) return;
+            if (created.IndexOf('\\') < 0) return;   // never a top-level key such as "SOFTWARE"
+            RegUtil.DeleteTreeIfEmpty(env.Reg, hive, created);
+        }
+
         public static void Revert(Env env, Change c)
         {
+            if (c.User != null && !string.Equals(c.User, env.UserSid, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("This setting belongs to another Windows account. Sign in as that account to undo it.");
+
             switch (c.Type)
             {
                 case "reg":
@@ -163,7 +213,33 @@ namespace Simplemize
                         env.Reg.Set(hive, c.Path, c.Name, kind, RegCodec.Decode(kind, c.Value));
                     }
                     else env.Reg.DeleteValue(hive, c.Path, c.Name);
-                    if (c.CreatedKey != null) RegUtil.DeleteTreeIfEmpty(env.Reg, hive, c.CreatedKey);
+                    CleanCreatedKey(env, hive, c);
+                    break;
+                }
+                case "regpair":
+                {
+                    // Put back only our key inside the string; anything Windows or the user changed since stays.
+                    var hive = (Hive)Enum.Parse(typeof(Hive), c.Hive);
+                    var pairs = RegPair.ParseText(env.Reg.Get(hive, c.Path, c.Name)?.Data as string)
+                        .Where(kv => !string.Equals(kv.Key, c.Part, StringComparison.OrdinalIgnoreCase)).ToList();
+                    if (c.PartOld != null) pairs.Add(new KeyValuePair<string, string>(c.Part, c.PartOld));
+                    if (pairs.Count == 0 && !c.Existed) env.Reg.DeleteValue(hive, c.Path, c.Name);
+                    else env.Reg.Set(hive, c.Path, c.Name, RegistryValueKind.String, RegPair.Join(pairs));
+                    CleanCreatedKey(env, hive, c);
+                    break;
+                }
+                case "regbits":
+                {
+                    // Restore only the bits we cleared; the rest of the flags stay as they are now.
+                    var hive = (Hive)Enum.Parse(typeof(Hive), c.Hive);
+                    int mask = int.Parse(c.Part, System.Globalization.CultureInfo.InvariantCulture);
+                    int def = int.Parse(c.PartDefault, System.Globalization.CultureInfo.InvariantCulture);
+                    var cur = env.Reg.Get(hive, c.Path, c.Name);
+                    int v = RegBitsClear.ReadInt(cur, def);
+                    v = c.PartOld == "1" ? (v | mask) : (v & ~mask);
+                    if (!c.Existed && v == def) env.Reg.DeleteValue(hive, c.Path, c.Name);
+                    else RegBitsClear.WriteInt(env, hive, c.Path, c.Name, cur, v);
+                    CleanCreatedKey(env, hive, c);
                     break;
                 }
                 case "svc":
@@ -230,10 +306,66 @@ namespace Simplemize
         public override Change Apply(Env env)
         {
             var cur = env.Reg.Get(Hive, Path, Name);
-            var ch = Change.ForReg(Hive, Path, Name, cur, RegUtil.TopmostMissingKey(env.Reg, Hive, Path));
+            var ch = Change.ForReg(env, Hive, Path, Name, cur, RegUtil.TopmostMissingKey(env.Reg, Hive, Path));
             env.Reg.Set(Hive, Path, Name, Kind, NewData(cur));
             return ch;
         }
+
+        public override bool Owns(Change c) =>
+            (c.Type == "reg" || c.Type == "regpair" || c.Type == "regbits")
+            && string.Equals(c.Hive, Hive.ToString(), StringComparison.OrdinalIgnoreCase)
+            && string.Equals(c.Path, Path, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(c.Name, Name, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Clears some bits in a numeric flags value (stored as text, like the accessibility "Flags"), leaving
+    /// every other bit as it is. Undo puts back only those bits.
+    /// </summary>
+    public sealed class RegBitsClear : RegSet
+    {
+        readonly int mask, windowsDefault;
+        readonly string what;
+
+        public RegBitsClear(Hive hive, string path, string name, int mask, int windowsDefault, string what)
+            : base(hive, path, name, RegistryValueKind.String, null, windowsDefault.ToString(System.Globalization.CultureInfo.InvariantCulture))
+        {
+            this.mask = mask;
+            this.windowsDefault = windowsDefault;
+            this.what = what;
+        }
+
+        public static int ReadInt(RegValue v, int fallback)
+        {
+            if (v == null) return fallback;
+            if (v.Data is int i) return i;
+            return int.TryParse(Convert.ToString(v.Data, System.Globalization.CultureInfo.InvariantCulture), out var n) ? n : fallback;
+        }
+
+        public static void WriteInt(Env env, Hive hive, string path, string name, RegValue current, int value)
+        {
+            if (current != null && current.Kind == RegistryValueKind.DWord) env.Reg.Set(hive, path, name, RegistryValueKind.DWord, value);
+            else env.Reg.Set(hive, path, name, RegistryValueKind.String, value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        public override bool Matches(RegValue cur) => (ReadInt(cur, windowsDefault) & mask) == 0;
+
+        public override Change Apply(Env env)
+        {
+            var cur = env.Reg.Get(Hive, Path, Name);
+            int v = ReadInt(cur, windowsDefault);
+            var ch = Change.ForReg(env, Hive, Path, Name, cur, RegUtil.TopmostMissingKey(env.Reg, Hive, Path));
+            ch.Type = "regbits";
+            ch.Part = mask.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            ch.PartOld = (v & mask) != 0 ? "1" : "0";
+            ch.PartDefault = windowsDefault.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            WriteInt(env, Hive, Path, Name, cur, v & ~mask);
+            return ch;
+        }
+
+        public override ActionLine Describe() => new ActionLine(
+            RegUtil.HiveName(Hive) + "\\" + Path,
+            Name + ": clear bit 0x" + mask.ToString("X") + " (" + what + "), every other setting kept    (Windows default: " + windowsDefault + ")");
     }
 
     /// <summary>Sets one "key=value;" pair inside a string value, keeping the other pairs (DirectX user settings).</summary>
@@ -248,10 +380,25 @@ namespace Simplemize
             this.value = value;
         }
 
-        static List<KeyValuePair<string, string>> Parse(RegValue v)
+        static List<KeyValuePair<string, string>> Parse(RegValue v) => ParseText(v?.Data as string);
+
+        public static string Join(IEnumerable<KeyValuePair<string, string>> pairs) => string.Concat(pairs.Select(kv => kv.Key + "=" + kv.Value + ";"));
+
+        public override Change Apply(Env env)
+        {
+            var cur = env.Reg.Get(Hive, Path, Name);
+            var old = Parse(cur).Where(kv => string.Equals(kv.Key, key, StringComparison.OrdinalIgnoreCase)).Select(kv => kv.Value).FirstOrDefault();
+            var ch = Change.ForReg(env, Hive, Path, Name, cur, RegUtil.TopmostMissingKey(env.Reg, Hive, Path));
+            ch.Type = "regpair";
+            ch.Part = key;
+            ch.PartOld = old;
+            env.Reg.Set(Hive, Path, Name, RegistryValueKind.String, NewData(cur));
+            return ch;
+        }
+
+        public static List<KeyValuePair<string, string>> ParseText(string s)
         {
             var list = new List<KeyValuePair<string, string>>();
-            var s = v?.Data as string;
             if (string.IsNullOrEmpty(s)) return list;
             foreach (var part in s.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
             {
@@ -265,7 +412,7 @@ namespace Simplemize
         {
             var list = Parse(current).Where(kv => !string.Equals(kv.Key, key, StringComparison.OrdinalIgnoreCase)).ToList();
             list.Add(new KeyValuePair<string, string>(key, value));
-            return string.Concat(list.Select(kv => kv.Key + "=" + kv.Value + ";"));
+            return Join(list);
         }
 
         public override bool Matches(RegValue cur) =>
@@ -310,27 +457,35 @@ namespace Simplemize
         public readonly int Start;
         public readonly bool Delayed;
         public bool StopNow;
+        /// <summary>Only ever make the service start less (Automatic → Manual), never raise a Disabled one.</summary>
+        public bool LowerOnly;
 
-        public ServiceStart(string name, string label, int start, bool delayed = false, bool stopNow = false)
+        public ServiceStart(string name, string label, int start, bool delayed = false, bool stopNow = false, bool lowerOnly = false)
         {
-            Name = name; Label = label; Start = start; Delayed = delayed; StopNow = stopNow;
+            Name = name; Label = label; Start = start; Delayed = delayed; StopNow = stopNow; LowerOnly = lowerOnly;
         }
 
         public override ActionLine Describe() => new ActionLine(
             "Service · " + Name + (Label != null ? " (" + Label + ")" : ""),
-            "startup type → " + ServiceInfo.ModeName(Start, Delayed) + (StopNow && Start == 4 ? ", stopped now" : ""));
+            "startup type → " + ServiceInfo.ModeName(Start, Delayed) + (StopNow && Start == 4 ? ", stopped now" : "")
+            + (LowerOnly ? "    (left alone if you already disabled it)" : ""));
+
+        bool Done(ServiceInfo s) => LowerOnly ? s.Start >= Start : s.Start == Start && (Start != 2 || s.Delayed == Delayed);
 
         public override bool? IsApplied(Env env)
         {
             var s = env.Sys.GetService(Name);
             if (s == null) return null;
-            return s.Start == Start && (Start != 2 || s.Delayed == Delayed);
+            return Done(s);
         }
+
+        public override bool Owns(Change c) => c.Type == "svc" && string.Equals(c.Name, Name, StringComparison.OrdinalIgnoreCase);
 
         public override Change Apply(Env env)
         {
             var s = env.Sys.GetService(Name);
             if (s == null) return null;
+            if (LowerOnly && Done(s)) return null;
             var ch = new Change { Type = "svc", Name = Name, OldStart = s.Start, OldDelayed = s.Delayed };
             if (!(s.Start == Start && (Start != 2 || s.Delayed == Delayed)))
                 env.Sys.SetServiceStart(Name, Start, Delayed);
@@ -360,10 +515,15 @@ namespace Simplemize
         {
             var st = env.Sys.GetTask(Path);
             if (st == TaskStatus2.Missing) return null;
-            var ch = new Change { Type = "task", Path = Path, OldEnabled = st != TaskStatus2.Disabled };
-            if (st != TaskStatus2.Disabled) env.Sys.SetTask(Path, false);
+            // If we can't see the current state we can't record it faithfully, so we don't touch it.
+            if (st == TaskStatus2.Unknown) throw new InvalidOperationException("Couldn't read this task's current state, so it was left alone.");
+            if (st == TaskStatus2.Disabled) return null;
+            var ch = new Change { Type = "task", Path = Path, OldEnabled = true };
+            env.Sys.SetTask(Path, false);
             return ch;
         }
+
+        public override bool Owns(Change c) => c.Type == "task" && string.Equals(c.Path, Path, StringComparison.OrdinalIgnoreCase);
     }
 
     public sealed class PowerPlanAction : TweakAction
@@ -398,6 +558,13 @@ namespace Simplemize
             env.Sys.SetActiveScheme(Ours);
             return new Change { Type = "power", OldScheme = old ?? Balanced, NewScheme = Ours };
         }
+
+        static readonly System.Text.RegularExpressions.Regex Guid =
+            new System.Text.RegularExpressions.Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
+
+        public override bool Owns(Change c) =>
+            c.Type == "power" && string.Equals(c.NewScheme, Ours, StringComparison.OrdinalIgnoreCase)
+            && (c.OldScheme == null || Guid.IsMatch(c.OldScheme));
     }
 
     public sealed class HibernateOff : TweakAction
@@ -407,10 +574,12 @@ namespace Simplemize
 
         public override Change Apply(Env env)
         {
-            bool was = env.Sys.HibernationOn();
+            if (!env.Sys.HibernationOn()) return null;   // already off: nothing to change or remember
             env.Sys.SetHibernation(false);
-            return new Change { Type = "hiber", OldEnabled = was };
+            return new Change { Type = "hiber", OldEnabled = true };
         }
+
+        public override bool Owns(Change c) => c.Type == "hiber";
     }
 
     public sealed class AppRemove : TweakAction

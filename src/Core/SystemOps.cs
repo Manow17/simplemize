@@ -337,17 +337,32 @@ namespace Simplemize
 
         // ---- hibernation ----------------------------------------------------------------
 
+        const string PowerKey = @"SYSTEM\CurrentControlSet\Control\Power";
+
+        static string HiberFile => Path.Combine((Environment.GetEnvironmentVariable("SystemDrive") ?? "C:") + "\\", "hiberfil.sys");
+
+        /// <summary>
+        /// Is hibernation (and with it Fast Startup) on? The explicit HibernateEnabled value wins; without it
+        /// the hibernation file tells the truth. (Missing is NOT "on": VMs and some laptops have it off by default.)
+        /// </summary>
         public bool HibernationOn()
         {
-            var v = reg.Get(Hive.HKLM, @"SYSTEM\CurrentControlSet\Control\Power", "HibernateEnabled");
-            return v == null || v.Kind != RegistryValueKind.DWord || (int)v.Data != 0;
+            var v = reg.Get(Hive.HKLM, PowerKey, "HibernateEnabled");
+            if (v != null && v.Kind == RegistryValueKind.DWord) return (int)v.Data != 0;
+            try { return File.Exists(HiberFile); } catch { return false; }
         }
 
         public void SetHibernation(bool on)
         {
             if (Sandbox)
             {
-                reg.Set(Hive.HKLM, @"SYSTEM\CurrentControlSet\Control\Power", "HibernateEnabled", RegistryValueKind.DWord, on ? 1 : 0);
+                // powercfg writes an explicit value. When the real PC has no value and is in the requested
+                // state anyway, model "back to how it was" as removing ours.
+                bool realOn = File.Exists(HiberFile);
+                if (new RealRegistry().Get(Hive.HKLM, PowerKey, "HibernateEnabled") == null && realOn == on)
+                    reg.DeleteValue(Hive.HKLM, PowerKey, "HibernateEnabled");
+                else
+                    reg.Set(Hive.HKLM, PowerKey, "HibernateEnabled", RegistryValueKind.DWord, on ? 1 : 0);
                 log.Info("[sandbox] hibernation -> " + (on ? "on" : "off"));
                 return;
             }
@@ -591,13 +606,25 @@ namespace Simplemize
         public static bool IsCleanable(string dir)
         {
             if (string.IsNullOrWhiteSpace(dir)) return false;
+            // Only absolute local paths: a relative path would resolve against the working folder,
+            // and a network path isn't ours to clean.
+            if (!Path.IsPathRooted(dir) || dir.StartsWith(@"\\", StringComparison.Ordinal) || dir.Length < 3 || dir[1] != ':') return false;
             string full;
             try { full = Path.GetFullPath(dir).TrimEnd('\\'); }
             catch { return false; }
             var root = Path.GetPathRoot(full)?.TrimEnd('\\') ?? "";
             if (full.Length <= root.Length + 1) return false;                       // a drive root
             if (full.Split('\\').Length < 3) return false;                           // C:\Something is too shallow
-            return CleanableEndings.Any(e => full.EndsWith(e, StringComparison.OrdinalIgnoreCase));
+            if (!CleanableEndings.Any(e => full.EndsWith(e, StringComparison.OrdinalIgnoreCase))) return false;
+            // Refuse if the folder or any folder above it is a junction or symlink: the files would
+            // really live somewhere else.
+            try
+            {
+                for (var d = new DirectoryInfo(full); d != null && d.FullName.TrimEnd('\\').Length > root.Length; d = d.Parent)
+                    if (d.Exists && (d.Attributes & FileAttributes.ReparsePoint) != 0) return false;
+            }
+            catch { return false; }
+            return true;
         }
 
         public long Clean(string dir, TimeSpan minAge)
@@ -651,7 +678,9 @@ namespace Simplemize
                     }
                     else if (e is FileInfo f)
                     {
-                        if (f.LastWriteTime > cutoff && f.CreationTime > cutoff) continue;
+                        // Skip anything touched recently by either clock: extracted installer files keep an old
+                        // "modified" date but get a fresh "created" date, and must survive.
+                        if (f.LastWriteTime > cutoff || f.CreationTime > cutoff) continue;
                         long len = f.Length;
                         if (delete)
                         {

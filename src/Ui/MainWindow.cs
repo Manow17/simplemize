@@ -16,7 +16,7 @@ namespace Simplemize.Ui
 {
     public sealed partial class MainWindow : Window
     {
-        public const string Version = "1.0.0";
+        public const string Version = "1.0.1";
 
         readonly Engine engine;
         readonly Env env;
@@ -84,7 +84,7 @@ namespace Simplemize.Ui
             public Dictionary<string, RadioButton> Filters = new Dictionary<string, RadioButton>();
         }
 
-        bool CanChange => env.IsAdmin || env.Sandbox;
+        bool CanChange => (env.IsAdmin || env.Sandbox) && env.BlockedReason == null;
 
         public MainWindow(Env env, Engine engine, IList<Tweak> tweaks, bool renderMode = false)
         {
@@ -342,17 +342,21 @@ namespace Simplemize.Ui
 
         FrameworkElement BuildBanner()
         {
-            if (env.Demo || (!env.Sandbox && env.IsAdmin)) return null;
+            if (env.Demo || (!env.Sandbox && env.IsAdmin && env.BlockedReason == null && !env.ForeignUser)) return null;
             var g = new Grid();
             g.ColumnDefinitions.Add(new ColumnDefinition());
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             string msg = env.Sandbox
                 ? "Sandbox mode: nothing on this PC is changed. Every change is simulated, so you can try everything safely."
-                : "Read-only. Simplemize isn't running as administrator, so it can show you everything but can't change anything.";
+                : env.BlockedReason != null
+                ? "Read-only: " + env.BlockedReason
+                : !env.IsAdmin
+                ? "Read-only. Simplemize isn't running as administrator, so it can show you everything but can't change anything."
+                : "Simplemize is running as a different Windows account than the one signed in. Per-user changes are switched off so they don't land in the wrong account; system-wide changes still work.";
             var t = Kit.Text(msg, 13, "Ink");
             t.VerticalAlignment = VerticalAlignment.Center;
             g.Children.Add(t);
-            if (!env.Sandbox)
+            if (!env.Sandbox && !env.IsAdmin)
             {
                 var b = Kit.Link("restart as administrator", () => Program.RelaunchElevated(this));
                 b.Foreground = null;
@@ -524,7 +528,7 @@ namespace Simplemize.Ui
             foreach (var t in tweaks)
             {
                 var s = new RowState();
-                try { s.Unavailable = t.Unavailable?.Invoke(env); } catch (Exception ex) { s.Unavailable = ex.Message; }
+                s.Unavailable = t.Reason(env);
                 try { s.Warning = t.Warning?.Invoke(env); } catch { }
                 s.State = s.Unavailable != null ? TState.NotApplicable : t.Evaluate(env);
                 if (withSizes && t.Measure != null)
@@ -545,7 +549,7 @@ namespace Simplemize.Ui
                 r.Unavailable = kv.Value.Unavailable;
                 r.Warning = kv.Value.Warning;
                 if (kv.Value.Size != -2) r.Size = kv.Value.Size;
-                r.HasBackup = engine.EntryFor(kv.Key) != null;
+                r.HasBackup = engine.HasUndoFor(kv.Key);
                 r.Update();
                 if (!r.Selected) selected.Remove(kv.Key);
             }

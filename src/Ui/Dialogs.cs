@@ -120,7 +120,7 @@ namespace Simplemize.Ui
             if (engine.SessionRestorePoint == null)
             {
                 rpText.Inlines.Add(Kit.Run("First, a restore point named “" + Engine.RestorePointName + "” is created. ", "Ink", FontWeights.SemiBold));
-                rpText.Inlines.Add(Kit.Run("If anything feels wrong later, rewind with System Restore or undo single changes on the Undo page.", "Ink2"));
+                rpText.Inlines.Add(Kit.Run("If System Restore is off for your system drive, Simplemize turns it on for this. If anything feels wrong later, rewind with System Restore or undo single changes on the Undo page.", "Ink2"));
             }
             else
             {

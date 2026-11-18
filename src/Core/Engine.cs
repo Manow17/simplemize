@@ -40,6 +40,8 @@ namespace Simplemize
         public List<RemovedRecord> Removed { get; set; } = new List<RemovedRecord>();
         public List<RestoreRecord> RestorePoints { get; set; } = new List<RestoreRecord>();
         public Snapshot Baseline { get; set; }
+        /// <summary>Set when Simplemize had to switch System Restore on to make a restore point.</summary>
+        public string SystemRestoreTurnedOn { get; set; }
     }
 
     // ---- progress events ------------------------------------------------------------------
@@ -88,6 +90,17 @@ namespace Simplemize
         public BackupEntry EntryFor(string id) => Backup.Entries.FirstOrDefault(e => e.TweakId == id);
         public Tweak Find(string id) => Catalog.FirstOrDefault(t => t.Id == id);
 
+        bool Mine(Change c) => c.User == null || string.Equals(c.User, Env.UserSid, StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>Is there anything this account can undo for this tweak?</summary>
+        public bool HasUndoFor(string id)
+        {
+            var e = EntryFor(id);
+            return e != null && e.Changes.Any(Mine);
+        }
+
+        public IEnumerable<BackupEntry> UndoableEntries => Backup.Entries.Where(e => e.Changes.Any(Mine));
+
         void Load()
         {
             Backup = new BackupFile();
@@ -124,10 +137,28 @@ namespace Simplemize
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(file));
                 var tmp = file + ".tmp";
+                if (File.Exists(tmp)) File.Delete(tmp);   // never reuse a leftover (or planted) temp file
                 File.WriteAllText(tmp, Pretty(Json().Serialize(Backup)), Encoding.UTF8);
                 if (File.Exists(file)) File.Replace(tmp, file, null);
                 else File.Move(tmp, file);
             }
+        }
+
+        /// <summary>Save with a few retries (antivirus or the indexer can hold the file for a moment).</summary>
+        public bool TrySave(out string error)
+        {
+            error = null;
+            for (int i = 0; i < 4; i++)
+            {
+                try { Save(); return true; }
+                catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+                {
+                    error = ex.Message;
+                    System.Threading.Thread.Sleep(250 * (i + 1));
+                }
+            }
+            Env.Log.Error("could not save backup.json: " + error);
+            return false;
         }
 
         /// <summary>Indents JSON so the backup is readable by humans who open it.</summary>
@@ -190,22 +221,34 @@ namespace Simplemize
         {
             var r = new BatchResult();
             Env.Log.Info("=== apply: " + string.Join(", ", tweaks.Select(t => t.Id)) + (Env.Sandbox ? " [sandbox]" : ""));
-            CaptureBaseline();
+
+            // 0 — make sure the backup file can be written before anything changes
+            if (Backup.Baseline == null) Backup.Baseline = Snapshot.Take();
+            if (!TrySave(out var saveError))
+            {
+                r.Cancelled = true;
+                progress(new Step { Kind = StepKind.Fail, Index = -1, Title = "Couldn't write the backup file", Detail = saveError + " Nothing was changed." });
+                return r;
+            }
 
             // 1 — restore point (once per session)
             if (SessionRestorePoint == null)
             {
                 progress(new Step { Kind = StepKind.Running, Index = -1, Title = "Creating a restore point", Detail = "Windows can take up to a minute for this." });
                 var rp = Env.Sys.CreateRestorePoint(RestorePointName);
+                if (rp.TurnedOnSystemRestore)
+                {
+                    Backup.SystemRestoreTurnedOn = Now() + " on " + (Environment.GetEnvironmentVariable("SystemDrive") ?? "C:");
+                    TrySave(out _);
+                    progress(new Step { Kind = StepKind.Info, Index = -1, Title = "System Restore was switched off for your system drive", Detail = "Simplemize turned it on so a restore point could be made. You can switch it off again in System Properties › System Protection." });
+                }
                 if (rp.Ok)
                 {
                     SessionRestorePoint = rp.Point;
                     r.RestorePoint = rp.Point;
                     Backup.RestorePoints.Add(new RestoreRecord { At = Now(), Sequence = rp.Point.Sequence, Description = rp.Point.Description });
-                    Save();
+                    TrySave(out _);
                     progress(new Step { Kind = StepKind.Ok, Index = -1, Title = "Restore point created", Detail = "“" + rp.Point.Description + "” · " + rp.Point.Created.ToString("d MMM yyyy, HH:mm", CultureInfo.InvariantCulture) });
-                    if (rp.TurnedOnSystemRestore)
-                        progress(new Step { Kind = StepKind.Info, Index = -1, Title = "System Restore was switched off for your system drive", Detail = "Simplemize turned it on so the restore point could be made." });
                 }
                 else
                 {
@@ -227,12 +270,19 @@ namespace Simplemize
             }
 
             // 2 — the tweaks themselves
+            bool aborted = false;
             for (int i = 0; i < tweaks.Count; i++)
             {
                 var t = tweaks[i];
+                if (aborted)
+                {
+                    r.Skipped++;
+                    progress(new Step { Kind = StepKind.Skip, Index = i, Total = tweaks.Count, Title = t.Title, Detail = "Not applied: stopped because the backup file couldn't be saved." });
+                    continue;
+                }
                 progress(new Step { Kind = StepKind.Running, Index = i, Total = tweaks.Count, Title = t.Title, Detail = t.Slow ? "This one takes a while." : null });
 
-                var reason = t.Unavailable?.Invoke(Env);
+                var reason = t.Reason(Env);
                 if (reason != null)
                 {
                     r.Skipped++;
@@ -258,9 +308,20 @@ namespace Simplemize
                             changed++;
                             if (t.Revertible)
                             {
+                                bool added = !entry.Changes.Any(c => c.TargetKey == ch.TargetKey);
                                 Merge(entry, ch);
                                 if (isNew && !Backup.Entries.Contains(entry)) Backup.Entries.Add(entry);
-                                Save();   // persist after every single change
+                                // Persist after every single change. If the original can't be stored, the
+                                // change is rolled back on the spot and the batch stops.
+                                if (!TrySave(out var err))
+                                {
+                                    try { Reverter.Revert(Env, ch); } catch (Exception rex) { Env.Log.Error("rollback failed: " + rex.Message); }
+                                    if (added) entry.Changes.Remove(ch);
+                                    if (entry.Changes.Count == 0) Backup.Entries.Remove(entry);
+                                    errors.Add("Couldn't save the backup file (" + err + "), so this change was rolled back.");
+                                    aborted = true;
+                                    break;
+                                }
                             }
                         }
                         if (a is Job j && !string.IsNullOrEmpty(j.LastResult)) result = j.LastResult;
@@ -276,7 +337,7 @@ namespace Simplemize
                 if (!t.Revertible && !t.OneShot && changed > 0)
                 {
                     Backup.Removed.Add(new RemovedRecord { Id = t.Id, Title = t.Title, At = Now(), StoreQuery = t.StoreQuery });
-                    Save();
+                    TrySave(out _);
                 }
 
                 if (errors.Count == 0)
@@ -320,24 +381,38 @@ namespace Simplemize
             {
                 var e = EntryFor(id);
                 if (e == null) continue;
+                var t = Find(id);
                 Env.Log.Info("=== undo: " + id + (Env.Sandbox ? " [sandbox]" : ""));
-                var failed = new List<Change>();
+                var keep = new List<Change>();
+                int failedHere = 0;
                 for (int i = e.Changes.Count - 1; i >= 0; i--)
                 {
                     var c = e.Changes[i];
+                    if (!Mine(c)) { keep.Insert(0, c); continue; }   // another account's value: theirs to undo
+                    // Only restore what this tweak can actually have changed. A backup entry that doesn't
+                    // match the catalog (edited or planted file) is refused.
+                    if (t == null || !t.Owns(c))
+                    {
+                        keep.Insert(0, c);
+                        failedHere++;
+                        res.Errors.Add(e.Title + ": a saved value doesn't match what this change touches, so it was skipped for safety.");
+                        Env.Log.Error("undo " + id + ": refused unexpected entry " + c.Describe());
+                        continue;
+                    }
                     try { Reverter.Revert(Env, c); Env.Log.Info("restored " + c.Describe()); }
                     catch (Exception ex)
                     {
-                        failed.Insert(0, c);
+                        keep.Insert(0, c);
+                        failedHere++;
                         res.Errors.Add(e.Title + ": " + ex.Message);
                         Env.Log.Error("undo " + id + ": " + c.Describe() + ": " + ex.Message);
                     }
                 }
-                if (failed.Count == 0) { Backup.Entries.Remove(e); res.Undone++; }
-                else { e.Changes = failed; res.Failed++; }
-                var t = Find(id);
+                if (keep.Count == 0) Backup.Entries.Remove(e);
+                else e.Changes = keep;
+                if (failedHere == 0) res.Undone++; else res.Failed++;
                 if (t != null) res.After |= t.After;
-                Save();
+                TrySave(out _);
             }
             Env.Sys.RefreshMouseAndMenus();
             Env.Sys.BroadcastSettingsChange();

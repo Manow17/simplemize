@@ -12,9 +12,9 @@ using Simplemize.Ui;
 [assembly: AssemblyDescription("A small, open-source Windows optimizer with a restore point before every change.")]
 [assembly: AssemblyProduct("Simplemize")]
 [assembly: AssemblyCopyright("MIT License")]
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
-[assembly: AssemblyInformationalVersion("1.0.0")]
+[assembly: AssemblyVersion("1.0.1.0")]
+[assembly: AssemblyFileVersion("1.0.1.0")]
+[assembly: AssemblyInformationalVersion("1.0.1")]
 // Compiled with csc directly, so state the target explicitly: it switches on .NET 4.8 behaviour (per-monitor DPI and so on).
 [assembly: System.Runtime.Versioning.TargetFramework(".NETFramework,Version=v4.8", FrameworkDisplayName = ".NET Framework 4.8")]
 
@@ -61,11 +61,30 @@ namespace Simplemize
             if ((selftest || render || Has("--reset-sandbox")) && Directory.Exists(dataDir))
                 try { Directory.Delete(dataDir, true); } catch { }
 
-            var log = new Log(Path.Combine(dataDir, "simplemize.log"));
+            // Read-only runs log to the user's own folder, so they never create the admin-only data folder.
+            var log = new Log(!sandbox && !admin
+                ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Simplemize", "simplemize.log")
+                : Path.Combine(dataDir, "simplemize.log"));
             var realReg = new RealRegistry();
             IRegistry reg = sandbox
                 ? new SandboxRegistry(realReg, selftest || render || export ? null : Path.Combine(dataDir, "sandbox-registry.json"))
                 : (IRegistry)realReg;
+
+            // One Simplemize at a time: two windows would each keep their own copy of the backup file.
+            System.Threading.Mutex single = null;
+            if (!sandbox)
+            {
+                bool got;
+                try { single = new System.Threading.Mutex(false, @"Global\Simplemize.Instance"); }
+                catch { single = new System.Threading.Mutex(false, @"Local\Simplemize.Instance"); }
+                try { got = single.WaitOne(0); }
+                catch (System.Threading.AbandonedMutexException) { got = true; }
+                if (!got)
+                {
+                    MessageBox.Show("Simplemize is already open.", "Simplemize", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return 0;
+                }
+            }
 
             var env = new Env
             {
@@ -75,8 +94,16 @@ namespace Simplemize
                 IsAdmin = admin,
                 DataDir = dataDir,
                 Info = SysInfo.Read(),
+                UserSid = Security.CurrentUserSid(),
             };
             env.Sys = new SystemOps(reg, log, sandbox, admin);
+            if (!sandbox)
+            {
+                env.ForeignUser = Security.ShellRunsAsAnotherUser();
+                // The backup is replayed with admin rights on undo, so its folder must be admin-only.
+                if (admin) env.BlockedReason = Security.SecureDataDir(dataDir, log);
+                if (env.BlockedReason != null) log.Error(env.BlockedReason);
+            }
             var catalog = Catalog.Build(env);
             var engine = new Engine(env, catalog);
             if (render && Has("--demo"))
@@ -108,7 +135,9 @@ namespace Simplemize
                 e.Handled = true;
             };
             var window = new MainWindow(env, engine, catalog);
-            return app.Run(window);
+            int code = app.Run(window);
+            GC.KeepAlive(single);
+            return code;
         }
 
         static bool TryElevate(string[] argv)
