@@ -55,7 +55,7 @@ namespace Simplemize
         public static extern int SHEmptyRecycleBin(IntPtr hwnd, string pszRootPath, uint dwFlags);
 
         public const uint SPI_SETMOUSE = 0x0004, SPIF_UPDATEINIFILE = 0x01, SPIF_SENDCHANGE = 0x02;
-        public const uint SPI_SETMENUSHOWDELAY = 0x006B;
+        public const uint SPI_SETMENUSHOWDELAY = 0x006B, SPI_SETKEYBOARDDELAY = 0x0017;
 
         [DllImport("user32.dll", SetLastError = true)]
         public static extern bool SystemParametersInfo(uint uiAction, uint uiParam, int[] pvParam, uint fWinIni);

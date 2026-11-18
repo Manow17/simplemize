@@ -128,6 +128,18 @@ namespace Simplemize.Ui
                 var gv = new GroupView { Name = grp.Key, Panel = new StackPanel(), RowsHost = new StackPanel() };
                 gv.Panel.Children.Add(GroupHeader(grp.Key, out gv.Count, first ? 30 : 46, bleed: true));
                 first = false;
+                if (grp.Key == "Graphics card: NVIDIA")
+                {
+                    var nvAll = Kit.Link("optimize NVIDIA Control Panel: select all of these", () =>
+                    {
+                        foreach (var t in grp) SetSelected(t, true);
+                        UpdateBar();
+                        Toast("All NVIDIA settings that aren't already set are selected. Press Review & apply.");
+                    }, "Ticks every NVIDIA setting on this page. Already-active ones are skipped.");
+                    nvAll.Margin = new Thickness(0, 12, 0, 2);
+                    nvAll.HorizontalAlignment = HorizontalAlignment.Left;
+                    gv.Panel.Children.Add(nvAll);
+                }
                 if (grp.Key == "Preinstalled apps")
                 {
                     var note = Kit.Text("Tick the apps you want gone. Simplemize can't reinstall them, but each one is free in the Microsoft Store. Apps that aren't installed on this PC aren't listed.", 13, "Ink2");

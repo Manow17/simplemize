@@ -204,6 +204,18 @@ namespace Simplemize
                 },
             });
 
+            list.Add(new Tweak
+            {
+                Id = "input.keyrepeat", Section = Section.Performance, Group = "Input", Level = Level.Minor,
+                Title = "Shorter key-repeat delay",
+                Summary = "Shortens the pause before a held key starts repeating, the same as moving the \"Repeat delay\" slider in Keyboard settings all the way to Short.",
+                Gain = "Held keys (arrows, backspace, movement in some games) respond sooner. It takes effect immediately.",
+                TradeOff = "If you tend to rest on keys, you may get the odd double letter at first.",
+                Affects = A("input"),
+                Presets = Preset.None,
+                Actions = { Sz(CU, @"Control Panel\Keyboard", "KeyboardDelay", "0", "\"1\"") },
+            });
+
             // ---- network
             var nagle = NagleActions(env);
             var nagleTweak = new Tweak
@@ -402,6 +414,52 @@ namespace Simplemize
 
             list.Add(new Tweak
             {
+                Id = "nv.refresh", Section = Section.Hardware, Group = "Graphics card: NVIDIA", Level = Level.Minor,
+                Title = "NVIDIA: Highest available refresh rate",
+                Summary = "Sets NVIDIA Control Panel's Preferred refresh rate to Highest available, so games in exclusive fullscreen use your monitor's fastest rate.",
+                Gain = "Many older games start at 60 Hz even on a 144 or 240 Hz monitor. With this they get the full rate, which is smoother and has less input delay.",
+                TradeOff = "None in practice. A game that offers its own refresh rate option still uses what you pick there.",
+                Affects = A("smoothness", "input delay"),
+                Presets = GS,
+                Requires = "NVIDIA graphics card",
+                Unavailable = NoNvidia,
+                Actions = { new NvSetting(HwIds.NvRefresh, 1, "Preferred refresh rate", "Highest available") },
+            });
+
+            list.Add(new Tweak
+            {
+                Id = "nv.shadercache", Section = Section.Hardware, Group = "Graphics card: NVIDIA", Level = Level.Minor,
+                Title = "NVIDIA: Unlimited shader cache",
+                Summary = "Sets NVIDIA Control Panel's Shader Cache Size to Unlimited, so the driver keeps every shader it has compiled instead of throwing old ones away.",
+                Gain = "Fewer \"first time\" stutters when you return to a game or area, because shaders don't have to be compiled again.",
+                TradeOff = "The cache can grow to several GB if you play many games. Windows' Disk Cleanup can still empty it (it's the \"DirectX Shader Cache\" entry).",
+                Affects = A("stutter"),
+                Presets = GS,
+                Requires = "NVIDIA graphics card",
+                Unavailable = NoNvidia,
+                Actions = { new NvSetting(HwIds.NvShaderCache, 0xFFFFFFFF, "Shader Cache Size", "Unlimited") },
+            });
+
+            list.Add(new Tweak
+            {
+                Id = "nv.texture", Section = Section.Hardware, Group = "Graphics card: NVIDIA", Level = Level.Minor,
+                Title = "NVIDIA: Texture filtering for performance",
+                Summary = "Sets Texture filtering - Quality to High performance and turns on Anisotropic sample optimization.",
+                Gain = "Usually 1 to 3% more FPS, more in older or texture-heavy games.",
+                TradeOff = "Textures can look a little softer or shimmer slightly at steep angles. Undo it if you notice.",
+                Affects = A("fps"),
+                Presets = S,
+                Requires = "NVIDIA graphics card",
+                Unavailable = NoNvidia,
+                Actions =
+                {
+                    new NvSetting(HwIds.NvTexQuality, 0x14, "Texture filtering - Quality", "High performance"),
+                    new NvSetting(HwIds.NvAnisoOpt, 1, "Texture filtering - Anisotropic sample optimization", "On"),
+                },
+            });
+
+            list.Add(new Tweak
+            {
                 Id = "display.refresh", Section = Section.Hardware, Group = "Display", Level = Level.Minor,
                 Title = "Run displays at their highest refresh rate",
                 Summary = "Checks every display and switches any that runs below its fastest refresh rate, for example a 144 Hz monitor stuck at 60 Hz.",
@@ -434,6 +492,30 @@ namespace Simplemize
                 Affects = A("input delay"),
                 Presets = GS,
                 Actions = { new PowerAC(HwIds.SubPcie, HwIds.Aspm, 0, "PCI Express link state power management", "Off") },
+            });
+
+            list.Add(new Tweak
+            {
+                Id = "dev.wifi", Section = Section.Hardware, Group = "Devices", Level = Level.Minor,
+                Title = "Wi-Fi at full power",
+                Summary = "Sets the wireless adapter's power saving mode to Maximum Performance while the PC is plugged in.",
+                Gain = "Fewer ping spikes on Wi-Fi, because the adapter doesn't nap between packets. No effect on wired connections.",
+                TradeOff = "A little more power use. Only the plugged-in setting changes.",
+                Affects = A("network delay"),
+                Presets = GS,
+                Actions = { new PowerAC(HwIds.SubWifi, HwIds.WifiPower, 0, "Wireless adapter power saving mode", "Maximum Performance") },
+            });
+
+            list.Add(new Tweak
+            {
+                Id = "dev.disk", Section = Section.Hardware, Group = "Devices", Level = Level.Minor,
+                Title = "Drives never power down",
+                Summary = "Sets \"Turn off hard disk after\" to Never while the PC is plugged in.",
+                Gain = "No pause while a sleeping hard drive spins back up in the middle of a game. SSDs are barely affected.",
+                TradeOff = "Hard drives keep spinning while the PC is on, using a little more power. Only the plugged-in setting changes.",
+                Affects = A("stutter"),
+                Presets = GS,
+                Actions = { new PowerAC(HwIds.SubDisk, HwIds.DiskIdle, 0, "Turn off hard disk after", "Never") },
             });
         }
 
@@ -558,6 +640,41 @@ namespace Simplemize
 
             list.Add(new Tweak
             {
+                Id = "priv.typing", Section = Section.Debloat, Group = "Telemetry & tracking", Level = Level.Minor,
+                Title = "Typing and inking data off",
+                Summary = "Stops Windows from collecting what you type and write by hand to build a personal dictionary and send improvement data to Microsoft.",
+                Gain = "Less personal data collected and uploaded.",
+                TradeOff = "Text suggestions and handwriting recognition learn less from you over time.",
+                Affects = A("privacy"),
+                Presets = All3,
+                Actions =
+                {
+                    Dw(CU, @"Software\Microsoft\InputPersonalization", "RestrictImplicitTextCollection", 1, "0"),
+                    Dw(CU, @"Software\Microsoft\InputPersonalization", "RestrictImplicitInkCollection", 1, "0"),
+                    Dw(CU, @"Software\Microsoft\InputPersonalization\TrainedDataStore", "HarvestContacts", 0, "1"),
+                    Dw(CU, @"Software\Microsoft\Personalization\Settings", "AcceptedPrivacyPolicy", 0, "1"),
+                },
+            });
+
+            list.Add(new Tweak
+            {
+                Id = "priv.recent", Section = Section.Debloat, Group = "Telemetry & tracking", Level = Level.Minor,
+                Title = "Don't track the apps and files you open",
+                Summary = "Stops Windows from keeping lists of the apps you start and the files you open, for Start and jump lists.",
+                Gain = "Nobody using your PC sees what you've opened recently.",
+                TradeOff = "Start's \"Most used\" list, jump lists and recent files in File Explorer stay empty, so reopening recent things takes an extra click.",
+                Affects = A("privacy"),
+                After = After.Explorer,
+                Presets = S,
+                Actions =
+                {
+                    Dw(CU, adv, "Start_TrackProgs", 0, "1"),
+                    Dw(CU, adv, "Start_TrackDocs", 0, "1"),
+                },
+            });
+
+            list.Add(new Tweak
+            {
                 Id = "priv.wer", Section = Section.Debloat, Group = "Telemetry & tracking", Level = Level.Minor,
                 Title = "Windows Error Reporting off",
                 Summary = "Stops Windows from collecting crash data and sending it to Microsoft after an app crashes.",
@@ -639,6 +756,19 @@ namespace Simplemize
 
             list.Add(new Tweak
             {
+                Id = "search.highlights", Section = Section.Debloat, Group = "Start, search & AI", Level = Level.Minor,
+                Title = "No search highlights",
+                Summary = "Removes the illustrated \"highlights\" (holidays, trending searches, news) from the search box and search panel.",
+                Gain = "A plain search box, and the search panel opens without loading web content first.",
+                TradeOff = "None.",
+                Affects = A("desktop", "privacy"),
+                After = After.Explorer,
+                Presets = All3,
+                Actions = { Dw(CU, @"Software\Microsoft\Windows\CurrentVersion\SearchSettings", "IsDynamicSearchBoxEnabled", 0, "1") },
+            });
+
+            list.Add(new Tweak
+            {
                 Id = "ai.copilot", Section = Section.Debloat, Group = "Start, search & AI", Level = Level.Minor,
                 Title = "Copilot off",
                 Summary = "Turns off Windows Copilot and hides its taskbar button. To remove the Copilot app itself, tick it under Preinstalled apps.",
@@ -703,6 +833,22 @@ namespace Simplemize
                 {
                     Dw(LM, @"SOFTWARE\Policies\Microsoft\Edge", "StartupBoostEnabled", 0, "not set"),
                     Dw(LM, @"SOFTWARE\Policies\Microsoft\Edge", "BackgroundModeEnabled", 0, "not set"),
+                },
+            });
+
+            list.Add(new Tweak
+            {
+                Id = "edge.extras", Section = Section.Debloat, Group = "Edge & OneDrive", Level = Level.Minor,
+                Title = "No Edge sidebar or shopping pop-ups",
+                Summary = "Turns off Edge's sidebar (the Copilot and apps bar on the right) and the shopping assistant that pops up coupon and price offers.",
+                Gain = "A cleaner browser and fewer pop-ups while you shop.",
+                TradeOff = "Those two Edge features are unavailable until you undo this.",
+                Affects = A("desktop", "privacy"),
+                Presets = All3,
+                Actions =
+                {
+                    Dw(LM, @"SOFTWARE\Policies\Microsoft\Edge", "HubsSidebarEnabled", 0, "not set"),
+                    Dw(LM, @"SOFTWARE\Policies\Microsoft\Edge", "EdgeShoppingAssistantEnabled", 0, "not set"),
                 },
             });
 
@@ -1117,6 +1263,47 @@ namespace Simplemize
                 Presets = Preset.None,
                 Unavailable = Win11Only, Requires = "Windows 11",
                 Actions = { Sz(CU, @"Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32", "", "", "key not present") },
+            });
+
+            list.Add(new Tweak
+            {
+                Id = "qol.taskbar", Section = Section.Extras, Group = "File Explorer & taskbar", Level = Level.Minor,
+                Title = "Tidier taskbar",
+                Summary = "Shrinks the search box on the taskbar to an icon and hides the Task View button.",
+                Gain = "More room on the taskbar for the apps you actually use. Search still works: press Win and type.",
+                TradeOff = "Task View is still there with Win+Tab.",
+                Affects = A("desktop"),
+                After = After.Explorer,
+                Presets = Preset.None,
+                Actions =
+                {
+                    Dw(CU, @"Software\Microsoft\Windows\CurrentVersion\Search", "SearchboxTaskbarMode", 1, "2 (search box)"),
+                    Dw(CU, adv, "ShowTaskViewButton", 0, "1"),
+                },
+            });
+
+            list.Add(new Tweak
+            {
+                Id = "sound.ducking", Section = Section.Extras, Group = "Sound & games", Level = Level.Minor,
+                Title = "Keep game sound up during voice calls",
+                Summary = "Stops Windows from turning other sounds down by 80% whenever it thinks you're in a call (Discord, Teams, the Xbox app).",
+                Gain = "Your game, music and videos stay at the volume you set while you talk.",
+                TradeOff = "None. You can still lower the volume of any app yourself.",
+                Affects = A("sound"),
+                Presets = All3,
+                Actions = { Dw(CU, @"Software\Microsoft\Multimedia\Audio", "UserDuckingPreference", 3, "1 (reduce by 80%)") },
+            });
+
+            list.Add(new Tweak
+            {
+                Id = "games.xboxbutton", Section = Section.Extras, Group = "Sound & games", Level = Level.Minor,
+                Title = "Xbox button doesn't open Game Bar",
+                Summary = "Stops the Xbox button on a controller from opening the Game Bar overlay on top of your game.",
+                Gain = "No overlay popping up when you press the Xbox button by accident or for Steam's own menu.",
+                TradeOff = "Open Game Bar with Win+G instead.",
+                Affects = A("games"),
+                Presets = Preset.None,
+                Actions = { Dw(CU, @"Software\Microsoft\GameBar", "UseNexusForGameBarEnabled", 0, "1") },
             });
 
             list.Add(new Tweak

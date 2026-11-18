@@ -22,7 +22,7 @@ namespace Simplemize
             {
                 Line("  available: " + NvDrs.Available);
                 if (NvDrs.Available)
-                    foreach (var id in new uint[] { HwIds.NvPowerMode, HwIds.NvPrerender })
+                    foreach (var id in new uint[] { HwIds.NvPowerMode, HwIds.NvPrerender, HwIds.NvRefresh, HwIds.NvShaderCache, HwIds.NvTexQuality, HwIds.NvAnisoOpt })
                     {
                         var v = NvDrs.Read(id);
                         Line("  0x" + id.ToString("X8") + "  name=\"" + NvDrs.NameOf(id) + "\"  status=" + v.Status + "  value=" + v.Current + "  location=" + v.Location + "  userSet=" + v.UserSet);
@@ -70,6 +70,10 @@ namespace Simplemize
         // NVIDIA (NvApiDriverSettings.h)
         public const uint NvPowerMode = 0x1057EB71;   // PREFERRED_PSTATE_ID: 0 adaptive, 1 prefer max, 5 optimal power (default)
         public const uint NvPrerender = 0x007BA09E;   // PRERENDERLIMIT_ID ("Low Latency Mode" On = 1, default 0 app-controlled)
+        public const uint NvRefresh = 0x0064B541;     // REFRESH_RATE_OVERRIDE_ID: 0 application-controlled (default), 1 highest available
+        public const uint NvShaderCache = 0x00AC8497; // PS_SHADERDISKCACHE_MAX_SIZE_ID: 0xffffffff = unlimited
+        public const uint NvTexQuality = 0x00CE2691;  // QUALITY_ENHANCEMENTS_ID: 0 quality (default), 0x14 high performance
+        public const uint NvAnisoOpt = 0x00E73211;    // PS_TEXFILTER_ANISO_OPTS2_ID: 1 = anisotropic sample optimization on
 
         // Power settings
         public static readonly Guid SubProcessor = new Guid("54533251-82be-4824-96c1-47b60b740d00");
@@ -81,6 +85,10 @@ namespace Simplemize
         public static readonly Guid UsbSuspend = new Guid("48e6b7a6-50f5-4782-a5d4-53bb8f07e226");
         public static readonly Guid SubPcie = new Guid("501a4d13-42af-4429-9fd1-a8218c268e20");
         public static readonly Guid Aspm = new Guid("ee12f906-d277-404b-b6da-e5fa1a576df5");
+        public static readonly Guid SubWifi = new Guid("19cbb8fa-5279-450e-9fac-8a3d5fedd0c1");
+        public static readonly Guid WifiPower = new Guid("12bbebe6-58d6-4636-95bb-3217ef867c1a");
+        public static readonly Guid SubDisk = new Guid("0012ee47-9041-4b5d-9b77-535fba8b1442");
+        public static readonly Guid DiskIdle = new Guid("6738e2c4-e8a5-4a42-b16a-e040e769756e");
 
         public static readonly Tuple<string, Guid, Guid>[] PowerAll =
         {
@@ -90,6 +98,8 @@ namespace Simplemize
             Tuple.Create("minimum processor state %", SubProcessor, MinState),
             Tuple.Create("USB selective suspend", SubUsb, UsbSuspend),
             Tuple.Create("PCIe link power mgmt", SubPcie, Aspm),
+            Tuple.Create("Wi-Fi power saving mode", SubWifi, WifiPower),
+            Tuple.Create("turn off hard disk after s", SubDisk, DiskIdle),
         };
     }
 }

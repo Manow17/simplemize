@@ -357,6 +357,7 @@ namespace Simplemize.Ui
         // ---- hooks for --render ---------------------------------------------------------
 
         public void ExpandForShot(string id) => rows[id].ToggleDetails();
+        public void ScrollToRowForShot(string id) { if (host.Content is ScrollViewer sv) { UpdateLayout(); var p = rows[id].Root.TransformToAncestor(sv).Transform(new Point(0, 0)); sv.ScrollToVerticalOffset(sv.VerticalOffset + p.Y - 120); } }
         public void ScrollForShot(bool end) { if (host.Content is ScrollViewer sv) { if (end) sv.ScrollToEnd(); else sv.ScrollToHome(); } }
         public void ConfirmReviewForShot() => RunApply(SelectedTweaks());
         public bool IsBusyForShot => busy;

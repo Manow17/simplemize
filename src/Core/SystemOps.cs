@@ -935,6 +935,7 @@ namespace Simplemize
                 };
                 Native.SystemParametersInfo(Native.SPI_SETMOUSE, 0, mouse, Native.SPIF_SENDCHANGE);
                 Native.SystemParametersInfo(Native.SPI_SETMENUSHOWDELAY, (uint)Read(@"Control Panel\Desktop", "MenuShowDelay", 400), IntPtr.Zero, Native.SPIF_SENDCHANGE);
+                Native.SystemParametersInfo(Native.SPI_SETKEYBOARDDELAY, (uint)Math.Max(0, Math.Min(3, Read(@"Control Panel\Keyboard", "KeyboardDelay", 1))), IntPtr.Zero, Native.SPIF_SENDCHANGE);
             }
             catch (Exception ex) { log.Warn("could not refresh mouse settings: " + ex.Message); }
         }

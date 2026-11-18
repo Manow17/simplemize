@@ -13,7 +13,7 @@ Simplemize is a small, free, open-source optimizer for Windows 10 and 11. It deb
 | Page | What it does |
 | --- | --- |
 | **Performance** | Ultimate Performance power plan, foreground priority, multimedia scheduler, Game Mode, Game DVR off, GPU scheduling, windowed-game optimizations, mouse acceleration off, Nagle off, network throttling, and more |
-| **Hardware** | CPU boost and core parking (Intel and AMD), NVIDIA driver settings (Prefer maximum performance, Low Latency Mode), displays at their highest refresh rate (with a 15-second auto-revert), USB and PCI Express power saving. Power changes apply only when plugged in. AMD Radeon users get a checklist for AMD Software, because AMD only allows those settings through its own app |
+| **Hardware** | CPU boost and core parking (Intel and AMD), NVIDIA Control Panel global settings in one click (Prefer maximum performance, Low Latency Mode, highest available refresh rate, unlimited shader cache, texture filtering for performance), displays at their highest refresh rate (with a 15-second auto-revert), USB, PCI Express, Wi-Fi and disk power saving. Power changes apply only when plugged in. AMD Radeon users get a checklist for AMD Software, because AMD only allows those settings through its own app |
 | **Debloat** | Telemetry and data-collection tasks, ads and tips, web results in Start, Copilot and Recall, Widgets, Edge background mode, OneDrive, and 40+ preinstalled apps (each one its own checkbox) |
 | **Processes** | Rarely used services to Manual, SysMain, search indexing, Print Spooler, service grouping, background Store apps |
 | **Cleanup** | Temp files, Windows Update cache, Delivery Optimization cache, crash dumps, DNS cache, component store cleanup, Recycle Bin. Sizes are measured first |

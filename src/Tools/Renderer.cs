@@ -65,6 +65,8 @@ namespace Simplemize
             }
 
             w.ShowPage("hardware");
+            w.ScrollToRowForShot("nv.power");
+            Save(w, Path.Combine(dir, pfx + "hardware-nvidia.png"), scale);
             w.ScrollForShot(true);
             Save(w, Path.Combine(dir, pfx + "hardware-bottom.png"), scale);
             w.ScrollForShot(false);
