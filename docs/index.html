@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simplemize</title>
+<meta name="description" content="A small, free, open-source Windows optimizer. Debloat, cut background processes and lower input delay, with a restore point made before anything changes.">
+<meta name="color-scheme" content="light dark">
+<meta property="og:title" content="Simplemize">
+<meta property="og:description" content="Switch off the parts of Windows you never asked for. Free, open source, with a restore point before every change.">
+<meta property="og:image" content="img/overview-light.png">
+<link rel="icon" href="favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script>
+  // apply the saved theme before first paint
+  try { var q = /[?&]theme=(light|dark)/.exec(location.search); var t = q ? q[1] : localStorage.getItem('simplemize-theme'); if (t) document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+</script>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap top-in">
+    <a class="brand" href="#" aria-label="Simplemize home">
+      <svg class="mark" viewBox="0 0 26 26" aria-hidden="true">
+        <rect width="26" height="26" rx="5" class="mark-bg"/>
+        <rect x="5.5" y="12.1" width="15" height="1.8" rx=".9" class="mark-track"/>
+        <rect x="4.9" y="9.6" width="6.8" height="6.8" rx="1" class="mark-knob"/>
+      </svg>
+      <span>simplemize</span>
+    </a>
+    <nav class="links" aria-label="Sections">
+      <a href="#tweaks">Tweaks</a>
+      <a href="#safety">Undo</a>
+      <a href="#faq">FAQ</a>
+      <a href="https://github.com/Manow17/simplemize">Source</a>
+    </nav>
+    <button class="theme" type="button" aria-label="Switch light or dark theme" title="Light / dark"><span></span></button>
+    <a class="btn small" href="https://github.com/Manow17/simplemize/releases/latest/download/Simplemize.exe">Download</a>
+  </div>
+</header>
+
+<main>
+
+  <!-- 01 -->
+  <section class="hero wrap">
+    <p class="eyebrow"><b>01</b> / Windows 10 &amp; 11 optimizer</p>
+    <h1>Switch off the parts of Windows you never asked for.</h1>
+    <p class="lede">Simplemize is a small, free, open-source tool that debloats Windows, trims what runs in the background and tunes it for lower input delay. It makes a restore point before it touches anything, and it tells you in plain words what every switch does.</p>
+    <div class="cta">
+      <a class="btn" href="https://github.com/Manow17/simplemize/releases/latest/download/Simplemize.exe">Download Simplemize.exe</a>
+      <a class="btn ghost" href="https://github.com/Manow17/simplemize">View the source</a>
+    </div>
+    <p class="meta mono">v<span data-version>1.0.0</span> · single 280 KB file · no installer, no account, no telemetry</p>
+
+    <figure class="shot">
+      <img src="img/overview-light.png" data-light="img/overview-light.png" data-dark="img/overview-dark.png"
+           width="2400" height="1600" alt="The Simplemize window: an overview with live process, service and memory counts, and three presets.">
+    </figure>
+  </section>
+
+  <!-- numbers -->
+  <section class="wrap">
+    <div class="figures" id="figures">
+      <div><span class="label">Changes</span><strong data-count="tweaks">–</strong><em>tweaks and cleanups, each explained</em></div>
+      <div><span class="label">Reversible</span><strong data-count="revertible">–</strong><em>undone exactly, one by one</em></div>
+      <div><span class="label">Apps</span><strong data-count="apps">–</strong><em>preinstalled apps you can remove</em></div>
+      <div><span class="label">Restore point</span><strong>1</strong><em>made before the first change, every session</em></div>
+    </div>
+  </section>
+
+  <!-- 02 -->
+  <section class="wrap block" id="how">
+    <p class="eyebrow"><b>02</b> / How it works</p>
+    <h2>Pick, read, apply. In that order.</h2>
+    <div class="steps">
+      <div class="step">
+        <span class="n mono">1</span>
+        <h3>Pick</h3>
+        <p>Start from a preset (Light touch, Gamer or Stripped) or go page by page: Performance, Debloat, Processes, Cleanup, Extras. Things already active on your PC are marked, so you don't apply them twice.</p>
+      </div>
+      <div class="step">
+        <span class="n mono">2</span>
+        <h3>Read</h3>
+        <p>Every change opens into a short sheet: what you get, what you give up, the exact registry values, services or tasks it touches, and how it's undone. Before applying, you see the whole list, heavy changes first.</p>
+      </div>
+      <div class="step">
+        <span class="n mono">3</span>
+        <h3>Apply</h3>
+        <p>Simplemize creates a System Restore point, saves the original value of every setting it changes, then applies. You get a line-by-line log, and a clear note if a restart is needed.</p>
+      </div>
+    </div>
+    <figure class="shot pair">
+      <img src="img/review-light.png" width="2400" height="1600" loading="lazy" alt="The review dialog listing every selected change before anything is applied.">
+    </figure>
+  </section>
+
+  <!-- 03 -->
+  <section class="wrap block" id="levels">
+    <p class="eyebrow"><b>03</b> / Minor or heavy</p>
+    <h2>Every change wears a label.</h2>
+    <div class="levels">
+      <div>
+        <span class="tag">MINOR</span>
+        <p><strong>A small, targeted change.</strong> Fully reversible, and no feature disappears. Think: Game Mode on, mouse acceleration off, no ads in Start, a faster menu.</p>
+      </div>
+      <div>
+        <span class="tag heavy">HEAVY</span>
+        <p><strong>Changes a lot.</strong> It switches a Windows feature off, removes an app, or lowers a protection. Think: search indexing off, preinstalled apps removed, Memory Integrity off. Read the trade-off first.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 04 -->
+  <section class="wrap block" id="tweaks">
+    <p class="eyebrow"><b>04</b> / Every change, in plain words</p>
+    <h2>Here's everything it can do.</h2>
+    <p class="lede narrow">This list is generated from the app itself, so it always matches what Simplemize actually changes. Open any item to see the exact values.</p>
+
+    <div class="browser">
+      <div class="tabs" role="tablist" aria-label="Sections"></div>
+      <div class="tools">
+        <div class="seg" role="group" aria-label="Filter by level">
+          <button type="button" data-level="all" class="on">All</button>
+          <button type="button" data-level="minor">Minor</button>
+          <button type="button" data-level="heavy">Heavy</button>
+        </div>
+        <label class="search"><span class="sr">Search changes</span><input type="search" placeholder="Search, e.g. telemetry, mouse, Edge"></label>
+      </div>
+      <div class="list" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <!-- 05 -->
+  <section class="wrap block" id="safety">
+    <p class="eyebrow"><b>05</b> / How to go back</p>
+    <h2>Three ways back, from one setting to everything.</h2>
+    <div class="ways">
+      <div class="way">
+        <h3><span class="mono">A</span> Undo inside Simplemize</h3>
+        <p>Simplemize keeps the original value of every setting it changed in <code>C:\ProgramData\Simplemize\backup.json</code>. The Undo &amp; restore page lists each change with an Undo button, plus Undo everything. It puts back exactly what was there, not a guessed default.</p>
+      </div>
+      <div class="way">
+        <h3><span class="mono">B</span> Rewind with System Restore</h3>
+        <ol>
+          <li>Press <kbd>Win</kbd> + <kbd>R</kbd>, type <code>rstrui</code> and press Enter.</li>
+          <li>If Windows suggests a restore point, select <b>Choose a different restore point</b>. Click Next.</li>
+          <li>Pick <b>Simplemize: before changes</b> with the date you want, click Next, then Finish.</li>
+          <li>The PC restarts and rewinds. It takes 5 to 20 minutes; don't switch it off. Your documents, photos and downloads aren't touched.</li>
+        </ol>
+      </div>
+      <div class="way">
+        <h3><span class="mono">C</span> If Windows won't start</h3>
+        <ol>
+          <li>On the sign-in screen, hold <kbd>Shift</kbd> and click Restart. Can't get that far? Switch the PC off while Windows is loading, three times in a row, and recovery opens by itself.</li>
+          <li>Choose <b>Troubleshoot › Advanced options › System Restore</b>.</li>
+          <li>Pick <b>Simplemize: before changes</b> and follow the same steps.</li>
+        </ol>
+      </div>
+    </div>
+    <p class="note">One honest limit: removed apps can't be put back by Simplemize or by System Restore. They're free to reinstall from the Microsoft Store, and the Undo page links to each one.</p>
+    <figure class="shot pair">
+      <img src="img/details-light.png" data-light="img/details-light.png" data-dark="img/details-dark.png" width="2400" height="1600" loading="lazy"
+           alt="A tweak opened up: what you get, the trade-off, the exact registry change and how it's undone.">
+    </figure>
+  </section>
+
+  <!-- 06 -->
+  <section class="wrap block" id="honest">
+    <p class="eyebrow"><b>06</b> / Straight talk</p>
+    <h2>What it won't do.</h2>
+    <div class="nots">
+      <div><h3>Double your FPS</h3><p>No settings tweak does. Simplemize removes what gets in a game's way: power saving, background work, recording hooks and scheduling defaults built for office PCs. The difference is largest on PCs that were never tuned. The one big lever, turning off Memory Integrity, is clearly marked as a security trade-off.</p></div>
+      <div><h3>"Clean" your registry</h3><p>Registry cleaners don't make Windows faster and can break things. Simplemize only changes documented settings, one named value at a time.</p></div>
+      <div><h3>Touch your security</h3><p>Windows Defender, the firewall and Windows security updates are left alone. The only protection it can lower is Memory Integrity, and only if you tick it yourself.</p></div>
+      <div><h3>Wipe your caches blindly</h3><p>It skips the shader cache and Prefetch on purpose: clearing them makes games stutter and apps load slower until Windows rebuilds them.</p></div>
+    </div>
+  </section>
+
+  <!-- 07 -->
+  <section class="wrap block" id="faq">
+    <p class="eyebrow"><b>07</b> / Questions</p>
+    <h2>Before you run it.</h2>
+    <div class="faq">
+      <details>
+        <summary>Windows says "Windows protected your PC". Is something wrong?</summary>
+        <p>No. SmartScreen shows that for any new app that isn't signed with a paid certificate yet. Click <b>More info</b>, then <b>Run anyway</b>. If you'd rather check first, the full source is on GitHub and the exe is built from it with a single script.</p>
+      </details>
+      <details>
+        <summary>Why does it ask for administrator rights?</summary>
+        <p>Most of what it changes (services, system policies, restore points) needs them. If you say no, Simplemize still opens in read-only mode, so you can look around without changing anything.</p>
+      </details>
+      <details>
+        <summary>Does it install anything or run in the background?</summary>
+        <p>No. It's a single file. It doesn't add a service, a scheduled task or a startup entry, and it doesn't connect to the internet. When you close it, it's gone.</p>
+      </details>
+      <details>
+        <summary>How do I remove Simplemize?</summary>
+        <p>If you want your old settings back, use Undo everything first. Then delete <code>Simplemize.exe</code> and the folder <code>C:\ProgramData\Simplemize</code>.</p>
+      </details>
+      <details>
+        <summary>Will it work on my laptop?</summary>
+        <p>Yes. Simplemize notices when a PC runs on a battery and warns you about changes that cost battery life. Presets skip those automatically.</p>
+      </details>
+      <details>
+        <summary>Which Windows versions does it support?</summary>
+        <p>Windows 10 and Windows 11, Home and Pro. Changes that only exist on Windows 11 are marked and greyed out on Windows 10. It needs .NET Framework 4.8, which every up-to-date Windows 10 and 11 PC already has.</p>
+      </details>
+      <details>
+        <summary>My antivirus flagged it.</summary>
+        <p>Tools that change system settings sometimes trip heuristics, especially when they're new and unsigned. You can read every line it runs in the source. If in doubt, build it yourself with <code>build.ps1</code>.</p>
+      </details>
+    </div>
+  </section>
+
+  <section class="wrap end">
+    <h2>Ready when you are.</h2>
+    <div class="cta">
+      <a class="btn" href="https://github.com/Manow17/simplemize/releases/latest/download/Simplemize.exe">Download Simplemize.exe</a>
+      <a class="btn ghost" href="#safety">Read how to go back</a>
+    </div>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap foot-in">
+    <span class="mono">simplemize · MIT licensed · not affiliated with Microsoft</span>
+    <a class="mono" href="https://github.com/Manow17/simplemize">github.com/Manow17/simplemize</a>
+  </div>
+</footer>
+
+<script src="tweaks.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

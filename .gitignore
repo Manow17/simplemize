@@ -1,0 +1,4 @@
+dist/
+*.rsp
+.claude/
+*.unreadable-*
