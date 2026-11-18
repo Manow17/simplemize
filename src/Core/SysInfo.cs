@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
@@ -20,6 +21,14 @@ namespace Simplemize
         public bool IsLaptop;
         /// <summary>true = Windows is on a spinning hard drive, false = SSD, null = unknown (filled in later).</summary>
         public bool? SystemOnHdd;
+
+        public string CpuVendor = "";                         // GenuineIntel / AuthenticAMD
+        public List<string> Gpus = new List<string>();        // every display adapter Windows knows
+        public bool HasNvidia => Gpus.Any(g => g.IndexOf("NVIDIA", StringComparison.OrdinalIgnoreCase) >= 0);
+        public bool HasAmdGpu => Gpus.Any(g => g.IndexOf("Radeon", StringComparison.OrdinalIgnoreCase) >= 0 || g.IndexOf("AMD", StringComparison.OrdinalIgnoreCase) >= 0);
+        public bool IsAmdCpu => CpuVendor.IndexOf("AMD", StringComparison.OrdinalIgnoreCase) >= 0;
+        /// <summary>AMD X3D processors rely on core parking to keep games on their V-Cache cores.</summary>
+        public bool IsX3D => Cpu.IndexOf("X3D", StringComparison.OrdinalIgnoreCase) >= 0;
 
         public bool IsWin11 => Build >= 22000;
 
@@ -45,10 +54,22 @@ namespace Simplemize
             {
                 var cpu = reg.Get(Hive.HKLM, @"HARDWARE\DESCRIPTION\System\CentralProcessor\0", "ProcessorNameString")?.Data as string;
                 if (!string.IsNullOrWhiteSpace(cpu)) s.Cpu = System.Text.RegularExpressions.Regex.Replace(cpu.Trim(), @"\s+", " ").Replace("(R)", "").Replace("(TM)", "").Replace(" CPU", "");
+                s.CpuVendor = reg.Get(Hive.HKLM, @"HARDWARE\DESCRIPTION\System\CentralProcessor\0", "VendorIdentifier")?.Data as string ?? "";
             }
             catch { }
 
             s.Gpu = ReadGpu(reg) ?? s.Gpu;
+            try
+            {
+                const string cls = @"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}";
+                foreach (var sub in reg.SubKeyNames(Hive.HKLM, cls).Where(n => n.Length == 4 && n.All(char.IsDigit)))
+                {
+                    var desc = reg.Get(Hive.HKLM, cls + "\\" + sub, "DriverDesc")?.Data as string;
+                    if (!string.IsNullOrWhiteSpace(desc) && !s.Gpus.Contains(desc)) s.Gpus.Add(desc);
+                }
+            }
+            catch { }
+            if (s.Gpus.Count == 0 && s.Gpu != null) s.Gpus.Add(s.Gpu);
 
             var mem = new Native.MEMORYSTATUSEX();
             if (Native.GlobalMemoryStatusEx(mem)) s.RamBytes = (long)mem.ullTotalPhys;

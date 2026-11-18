@@ -158,6 +158,12 @@ namespace Simplemize.Ui
                 content.Children.Add(gv.Panel);
             }
 
+            if (sec == Section.Hardware)
+            {
+                content.Children.Insert(1, HardwareSummary());
+                if (env.Info.HasAmdGpu) content.Children.Add(AmdGuide());
+            }
+
             if (sec == Section.Performance)
             {
                 var honest = Kit.Note("Straight talk: no settings tweak doubles your FPS. What these do is remove the things that get in a game's way: power saving, background work, recording hooks and scheduling defaults built for office PCs. The difference is largest on PCs that were never tuned.", "Ink3", 12.5);
@@ -169,6 +175,83 @@ namespace Simplemize.Ui
 
             RebuildApps(view);
             return PageScroll(content);
+        }
+
+        /// <summary>What the Hardware page found on this PC.</summary>
+        FrameworkElement HardwareSummary()
+        {
+            var g = new Grid();
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
+            g.ColumnDefinitions.Add(new ColumnDefinition());
+            int row = 0;
+            void Add(string label, string value)
+            {
+                g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                var l = Kit.Label(label, "Ink3", 10);
+                l.Margin = new Thickness(0, 3, 12, 8);
+                var v = Kit.Text(value, 13, "Ink");
+                v.Margin = new Thickness(0, 0, 0, 8);
+                Grid.SetRow(l, row); Grid.SetRow(v, row); Grid.SetColumn(v, 1);
+                g.Children.Add(l); g.Children.Add(v);
+                row++;
+            }
+            Add("Processor", env.Info.Cpu + (env.Info.IsX3D ? "  (X3D: core parking is left to AMD's driver)" : ""));
+            Add("Graphics", string.Join("  +  ", env.Info.Gpus) +
+                (env.Sys.NvAvailable ? "  ·  NVIDIA driver settings available" : env.Info.HasAmdGpu ? "  ·  see the AMD Radeon note below" : ""));
+            List<DisplayInfo> displays;
+            try { displays = env.Sys.ListDisplays(); } catch { displays = new List<DisplayInfo>(); }
+            Add("Displays", displays.Count == 0 ? "–" : string.Join("\n", displays.Select(d =>
+                d.Width + " × " + d.Height + " at " + d.Hz + " Hz" + (d.BestHz > d.Hz ? "  (can do " + d.BestHz + " Hz)" : "  (its highest)"))));
+            var box = Kit.Box(g, "Panel", "Line", 16);
+            box.Padding = new Thickness(18, 14, 18, 6);
+            box.Margin = new Thickness(0, 26, 0, 0);
+            return box;
+        }
+
+        /// <summary>AMD only allows Radeon settings through its own app, so Simplemize explains instead of editing driver data.</summary>
+        FrameworkElement AmdGuide()
+        {
+            var sp = new StackPanel();
+            sp.Children.Add(GroupHeader("Graphics card: AMD Radeon", out var cnt, 46, bleed: true));
+            cnt.Text = "set these yourself";
+            sp.Children.Add(Kit.Text("AMD only allows Radeon settings to be changed through AMD Software (or its developer kit). Simplemize won't edit undocumented driver data, so instead here's what to set. Open AMD Software › Gaming › Graphics:", 13.5, "Ink2").Margin(0, 14, 0, 12));
+            var tips = new[]
+            {
+                new[] { "Radeon Anti-Lag", "On", "Less input delay when the graphics card is the bottleneck. If a game offers Anti-Lag 2 in its own settings, use that instead." },
+                new[] { "Radeon Chill", "Off", "Chill caps your frame rate to save power." },
+                new[] { "Radeon Boost", "Off", "Boost lowers the resolution while you move." },
+                new[] { "Wait for Vertical Refresh", "Off, unless application specifies", "Lets each game decide on V-Sync instead of forcing it." },
+                new[] { "Enhanced Sync", "Off", "Can cause stutter in some games. Use FreeSync instead." },
+                new[] { "AMD FreeSync (Display tab)", "On", "If your monitor supports it: smooth motion without tearing." },
+            };
+            foreach (var t in tips)
+            {
+                var g = new Grid { Margin = new Thickness(0, 0, 0, 10) };
+                g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(230) });
+                g.ColumnDefinitions.Add(new ColumnDefinition());
+                var head = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 13.5 };
+                head.SetResourceReference(TextBlock.FontFamilyProperty, "FontBody");
+                head.Inlines.Add(Kit.Run(t[0] + ": ", "Ink"));
+                head.Inlines.Add(Kit.Run(t[1], "Ink", FontWeights.SemiBold));
+                g.Children.Add(head);
+                var why = Kit.Text(t[2], 13, "Ink2");
+                Grid.SetColumn(why, 1);
+                g.Children.Add(why);
+                sp.Children.Add(g);
+            }
+            var exe = new[]
+            {
+                @"C:\Program Files\AMD\CNext\CNext\RadeonSoftware.exe",
+                Environment.ExpandEnvironmentVariables(@"%ProgramFiles%\AMD\CNext\CNext\RadeonSoftware.exe"),
+            }.FirstOrDefault(File.Exists);
+            if (exe != null)
+            {
+                var b = Kit.Button("Open AMD Software", "Secondary", () => Open(exe));
+                b.HorizontalAlignment = HorizontalAlignment.Left;
+                b.Margin = new Thickness(0, 6, 0, 0);
+                sp.Children.Add(b);
+            }
+            return sp;
         }
 
         void RebuildApps(SectionView view)
@@ -186,9 +269,11 @@ namespace Simplemize.Ui
                 foreach (var r in gv.Rows)
                 {
                     bool isApp = r.T.Group == "Preinstalled apps";
+                    bool noNvidia = r.T.Group == "Graphics card: NVIDIA" && !env.Info.HasNvidia && !env.Sys.NvAvailable;
                     bool hidden = (filter == "minor" && r.T.Level != Level.Minor)
                                   || (filter == "heavy" && r.T.Level != Level.Heavy)
-                                  || (isApp && (env.Apps == null || r.Unavailable != null));
+                                  || (isApp && (env.Apps == null || r.Unavailable != null))
+                                  || noNvidia;
                     r.Root.Visibility = hidden ? Visibility.Collapsed : Visibility.Visible;
                     if (!hidden) shown++;
                 }
@@ -199,7 +284,8 @@ namespace Simplemize.Ui
 
             // filter labels count what can actually be shown (apps that aren't installed don't count)
             var countable = view.Groups.SelectMany(g => g.Rows)
-                .Where(r => r.T.Group != "Preinstalled apps" || (env.Apps != null && r.Unavailable == null)).ToList();
+                .Where(r => r.T.Group != "Preinstalled apps" || (env.Apps != null && r.Unavailable == null))
+                .Where(r => r.T.Group != "Graphics card: NVIDIA" || env.Info.HasNvidia || env.Sys.NvAvailable).ToList();
             foreach (var kv in view.Filters)
             {
                 int n = kv.Key == "all" ? countable.Count : countable.Count(r => r.T.Level == (kv.Key == "minor" ? Level.Minor : Level.Heavy));
@@ -364,7 +450,7 @@ namespace Simplemize.Ui
         FrameworkElement BuildStartupPage()
         {
             var c = new StackPanel();
-            c.Children.Add(Header("07", "Startup apps", "What starts with Windows",
+            c.Children.Add(Header(PageList.First(p => p.Key == "startup").Num, "Startup apps", "What starts with Windows",
                 "Apps that launch every time you sign in. Switching one off here works exactly like Task Manager's Startup tab: the app stays installed and you can switch it back on anytime. Changes apply right away."));
 
             List<StartupItem> items;
@@ -437,7 +523,7 @@ namespace Simplemize.Ui
         FrameworkElement BuildUndoPage()
         {
             var c = new StackPanel();
-            c.Children.Add(Header("08", "Undo & restore", "Every way back",
+            c.Children.Add(Header(PageList.First(p => p.Key == "undo").Num, "Undo & restore", "Every way back",
                 "Changed your mind, or something feels off? Here's how to undo Simplemize, from a single setting to everything at once."));
 
             // A — undo with Simplemize

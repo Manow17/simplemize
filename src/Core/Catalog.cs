@@ -35,6 +35,7 @@ namespace Simplemize
         {
             var list = new List<Tweak>();
             Performance(list, env);
+            Hardware(list);
             Debloat(list, env);
             Processes(list);
             Cleanup(list);
@@ -319,6 +320,120 @@ namespace Simplemize
                     Dw(LM, @"SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity", "Enabled", 0, "1 on most Windows 11 PCs"),
                     Dw(LM, @"SYSTEM\CurrentControlSet\Control\DeviceGuard", "EnableVirtualizationBasedSecurity", 0, "not set"),
                 },
+            });
+        }
+
+        // ===================================================================================
+        // HARDWARE — processor, graphics driver, display and device power behaviour.
+        // Power plan values change only the plugged-in (AC) setting; battery behaviour is untouched.
+        // ===================================================================================
+        static string NoNvidia(Env env) => env.Sys.NvAvailable ? null : "No NVIDIA graphics card or driver found on this PC";
+
+        static void Hardware(List<Tweak> list)
+        {
+            list.Add(new Tweak
+            {
+                Id = "cpu.boost", Section = Section.Hardware, Group = "Processor (Intel and AMD)", Level = Level.Minor,
+                Title = "Faster CPU boost",
+                Summary = "Lets the processor jump to its boost clock sooner and stay there, and tells it to favor speed over saving power.",
+                Gain = "Quicker response when a game or app suddenly needs the processor, instead of a short ramp-up.",
+                TradeOff = "A bit more power and heat under load. Only the plugged-in setting changes, so battery life isn't affected.",
+                Affects = A("fps", "input delay"),
+                Presets = GS,
+                Actions =
+                {
+                    new PowerAC(HwIds.SubProcessor, HwIds.BoostMode, 2, "Processor performance boost mode", "Aggressive"),
+                    new PowerAC(HwIds.SubProcessor, HwIds.Epp, 0, "Energy performance preference", "0 (maximum performance)"),
+                },
+            });
+
+            list.Add(new Tweak
+            {
+                Id = "cpu.parking", Section = Section.Hardware, Group = "Processor (Intel and AMD)", Level = Level.Minor,
+                Title = "Keep all CPU cores awake",
+                Summary = "Stops Windows from parking (switching off) idle processor cores, so they don't have to wake up when a game spreads its work across them.",
+                Gain = "Fewer small stutters when a game's load jumps between cores.",
+                TradeOff = "Slightly higher power use at idle. Only the plugged-in setting changes.",
+                Affects = A("fps"),
+                Presets = GS,
+                Unavailable = e => e.Info.IsX3D ? "AMD X3D processors use core parking to keep games on their 3D V-Cache cores, so this is left alone" : null,
+                Actions = { new PowerAC(HwIds.SubProcessor, HwIds.CoreParkingMin, 100, "Core parking minimum cores", "100% (no parking)") },
+            });
+
+            list.Add(new Tweak
+            {
+                Id = "cpu.minstate", Section = Section.Hardware, Group = "Processor (Intel and AMD)", Level = Level.Heavy,
+                Title = "CPU never clocks down",
+                Summary = "Sets the minimum processor state to 100%, so the processor stays at full speed even when the PC is idle.",
+                Gain = "No clock ramp-up at all. The difference is small on modern processors, which change speed very quickly anyway.",
+                TradeOff = "Noticeably more power use and heat at idle, and possibly louder fans. Only the plugged-in setting changes.",
+                Affects = A("input delay"),
+                Presets = Preset.None,
+                Actions = { new PowerAC(HwIds.SubProcessor, HwIds.MinState, 100, "Minimum processor state", "100%") },
+            });
+
+            list.Add(new Tweak
+            {
+                Id = "nv.power", Section = Section.Hardware, Group = "Graphics card: NVIDIA", Level = Level.Minor,
+                Title = "NVIDIA: Prefer maximum performance",
+                Summary = "Sets NVIDIA Control Panel's Power management mode to Prefer maximum performance, so the graphics card doesn't drop its clocks in the middle of a game.",
+                Gain = "Steadier frame times in games that don't keep the graphics card fully busy all the time.",
+                TradeOff = "The card keeps higher clocks whenever an app that uses 3D acceleration is open (that can include browsers and Discord), so it uses more power and runs warmer.",
+                Affects = A("fps"),
+                Presets = GS,
+                Requires = "NVIDIA graphics card",
+                Unavailable = NoNvidia,
+                Actions = { new NvSetting(HwIds.NvPowerMode, 1, "Power management mode", "Prefer maximum performance") },
+            });
+
+            list.Add(new Tweak
+            {
+                Id = "nv.latency", Section = Section.Hardware, Group = "Graphics card: NVIDIA", Level = Level.Minor,
+                Title = "NVIDIA: Low Latency Mode on",
+                Summary = "Sets NVIDIA's Low Latency Mode to On, so the processor prepares at most one frame ahead of the graphics card.",
+                Gain = "Less input delay when the graphics card is the bottleneck. Games with NVIDIA Reflex use Reflex instead, which works even better.",
+                TradeOff = "In some processor-heavy games the average FPS can drop slightly. Games that are already running pick it up after a restart.",
+                Affects = A("input delay"),
+                Presets = GS,
+                Requires = "NVIDIA graphics card",
+                Unavailable = NoNvidia,
+                Actions = { new NvSetting(HwIds.NvPrerender, 1, "Low Latency Mode (maximum pre-rendered frames)", "On (1 frame)") },
+            });
+
+            list.Add(new Tweak
+            {
+                Id = "display.refresh", Section = Section.Hardware, Group = "Display", Level = Level.Minor,
+                Title = "Run displays at their highest refresh rate",
+                Summary = "Checks every display and switches any that runs below its fastest refresh rate, for example a 144 Hz monitor stuck at 60 Hz.",
+                Gain = "If a display was running slower than it can, this is the biggest smoothness upgrade on this page: frames show up sooner and motion looks clearer.",
+                TradeOff = "None if your monitor and cable support it. You confirm the new rate on screen; if you don't, it goes back by itself after 15 seconds.",
+                Affects = A("smoothness", "input delay"),
+                Presets = All3,
+                Actions = { new DisplayMaxRefresh() },
+            });
+
+            list.Add(new Tweak
+            {
+                Id = "dev.usb", Section = Section.Hardware, Group = "Devices", Level = Level.Minor,
+                Title = "USB devices never sleep",
+                Summary = "Turns off USB selective suspend, so Windows doesn't put your mouse, keyboard, headset or controller to sleep to save power.",
+                Gain = "No wake-up delay and no random disconnects from USB devices.",
+                TradeOff = "Slightly higher power use. Only the plugged-in setting changes.",
+                Affects = A("input"),
+                Presets = GS,
+                Actions = { new PowerAC(HwIds.SubUsb, HwIds.UsbSuspend, 0, "USB selective suspend", "Disabled") },
+            });
+
+            list.Add(new Tweak
+            {
+                Id = "dev.pcie", Section = Section.Hardware, Group = "Devices", Level = Level.Minor,
+                Title = "PCI Express power saving off",
+                Summary = "Turns off Link State Power Management, which lets the connection to your graphics card and NVMe drive drop into a low-power state.",
+                Gain = "Removes a small wake-up delay on the graphics card and SSD connection.",
+                TradeOff = "Slightly higher power use. Only the plugged-in setting changes.",
+                Affects = A("input delay"),
+                Presets = GS,
+                Actions = { new PowerAC(HwIds.SubPcie, HwIds.Aspm, 0, "PCI Express link state power management", "Off") },
             });
         }
 

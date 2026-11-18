@@ -374,6 +374,88 @@ namespace Simplemize
             if (rc != 0) throw new InvalidOperationException("powercfg /hibernate failed (" + Squash(o) + ").");
         }
 
+        // ---- hardware: power plan values, NVIDIA driver settings, displays -----------------
+
+        readonly Dictionary<string, uint> sbPower = new Dictionary<string, uint>(StringComparer.OrdinalIgnoreCase);
+        readonly Dictionary<uint, uint?> sbNv = new Dictionary<uint, uint?>();
+        readonly Dictionary<string, int> sbHz = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        public Guid? ActivePowerScheme()
+        {
+            try { return PowerSettings.ActiveScheme(); } catch { return null; }
+        }
+
+        public uint? ReadPowerAC(Guid scheme, Guid sub, Guid setting)
+        {
+            if (Sandbox && sbPower.TryGetValue(scheme + "|" + sub + "|" + setting, out var v)) return v;
+            try { return PowerSettings.ReadAC(scheme, sub, setting); } catch { return null; }
+        }
+
+        public void WritePowerAC(Guid scheme, Guid sub, Guid setting, uint value)
+        {
+            if (Sandbox)
+            {
+                sbPower[scheme + "|" + sub + "|" + setting] = value;
+                log.Info("[sandbox] power setting " + setting + " -> " + value);
+                return;
+            }
+            PowerSettings.WriteAC(scheme, sub, setting, value);
+            log.Info("power setting " + setting + " (plugged in) -> " + value + " on plan " + scheme);
+        }
+
+        /// <summary>Screenshot mode only: pretend there is (or isn't) an NVIDIA driver.</summary>
+        public bool? NvOverride;
+
+        public bool NvAvailable
+        {
+            get { if (NvOverride.HasValue) return NvOverride.Value; try { return NvDrs.Available; } catch { return false; } }
+        }
+
+        public NvDrs.Value NvRead(uint id)
+        {
+            if (Sandbox && sbNv.TryGetValue(id, out var v))
+                return v == null ? new NvDrs.Value { Status = NvDrs.SETTING_NOT_FOUND } : new NvDrs.Value { Status = NvDrs.OK, Current = v.Value, UserSet = true };
+            return NvDrs.Read(id);
+        }
+
+        public void NvWrite(uint id, uint value)
+        {
+            if (Sandbox) { sbNv[id] = value; log.Info("[sandbox] NVIDIA setting 0x" + id.ToString("X8") + " -> " + value); return; }
+            NvDrs.Write(id, value);
+            log.Info("NVIDIA setting 0x" + id.ToString("X8") + " -> " + value);
+        }
+
+        public void NvReset(uint id)
+        {
+            if (Sandbox) { sbNv[id] = null; log.Info("[sandbox] NVIDIA setting 0x" + id.ToString("X8") + " -> driver default"); return; }
+            NvDrs.Reset(id);
+            log.Info("NVIDIA setting 0x" + id.ToString("X8") + " -> driver default");
+        }
+
+        public List<DisplayInfo> ListDisplays()
+        {
+            List<DisplayInfo> list;
+            try { list = Displays.List(); } catch { return new List<DisplayInfo>(); }
+            if (Sandbox)
+                foreach (var d in list)
+                    if (sbHz.TryGetValue(d.Device, out var hz)) d.Hz = hz;
+            return list;
+        }
+
+        /// <summary>0 on success, otherwise the Windows DISP_CHANGE code.</summary>
+        public int SetRefresh(string device, int hz)
+        {
+            if (Sandbox)
+            {
+                sbHz[device] = hz;
+                log.Info("[sandbox] " + device + " -> " + hz + " Hz");
+                return 0;
+            }
+            int rc = Displays.SetRefresh(device, hz, false);
+            log.Info(device + " -> " + hz + " Hz: " + (rc == 0 ? "ok" : "refused (" + rc + ")"));
+            return rc;
+        }
+
         // ---- restore points -------------------------------------------------------------
 
         static ManagementScope SrScope() => new ManagementScope(@"\\.\root\default");

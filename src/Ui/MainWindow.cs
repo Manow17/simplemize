@@ -16,7 +16,7 @@ namespace Simplemize.Ui
 {
     public sealed partial class MainWindow : Window
     {
-        public const string Version = "1.0.2";
+        public const string Version = "1.1.0";
 
         readonly Engine engine;
         readonly Env env;
@@ -52,20 +52,23 @@ namespace Simplemize.Ui
             new PageInfo { Key = "performance", Num = "02", Label = "Performance", Section = Simplemize.Section.Performance,
                 Title = "Performance",
                 Lede = "Lower input delay, steadier frame times and less work for the processor. Most of these are small switches that add up. The one big lever sits at the bottom, under Security trade-offs." },
-            new PageInfo { Key = "debloat", Num = "03", Label = "Debloat", Section = Simplemize.Section.Debloat,
+            new PageInfo { Key = "hardware", Num = "03", Label = "Hardware", Section = Simplemize.Section.Hardware,
+                Title = "Hardware",
+                Lede = "Settings outside Windows itself: how your processor boosts, your NVIDIA driver's global settings, your display's refresh rate and device power saving. Power changes apply only when the PC is plugged in, so battery life on laptops stays the same." },
+            new PageInfo { Key = "debloat", Num = "04", Label = "Debloat", Section = Simplemize.Section.Debloat,
                 Title = "Debloat",
                 Lede = "Switch off tracking, ads and features you didn't ask for, and remove preinstalled apps. Each app is listed on its own, so nothing goes that you didn't tick." },
-            new PageInfo { Key = "processes", Num = "04", Label = "Processes", Section = Simplemize.Section.Processes,
+            new PageInfo { Key = "processes", Num = "05", Label = "Processes", Section = Simplemize.Section.Processes,
                 Title = "Processes",
                 Lede = "Fewer things running in the background. Every service change is recorded, so undo puts back the exact startup type each service had." },
-            new PageInfo { Key = "cleanup", Num = "05", Label = "Cleanup", Section = Simplemize.Section.Cleanup,
+            new PageInfo { Key = "cleanup", Num = "06", Label = "Cleanup", Section = Simplemize.Section.Cleanup,
                 Title = "Cleanup",
                 Lede = "One-time cleanups that free disk space. Sizes are measured on this PC. Simplemize leaves your shader cache and Prefetch alone on purpose: clearing them makes games stutter and apps load slower until Windows rebuilds them." },
-            new PageInfo { Key = "extras", Num = "06", Label = "Extras", Section = Simplemize.Section.Extras,
+            new PageInfo { Key = "extras", Num = "07", Label = "Extras", Section = Simplemize.Section.Extras,
                 Title = "Extras",
                 Lede = "Small quality-of-life changes for File Explorer, the taskbar, Windows Update and power." },
-            new PageInfo { Key = "startup", Num = "07", Label = "Startup apps" },
-            new PageInfo { Key = "undo", Num = "08", Label = "Undo & restore" },
+            new PageInfo { Key = "startup", Num = "08", Label = "Startup apps" },
+            new PageInfo { Key = "undo", Num = "09", Label = "Undo & restore" },
         };
 
         sealed class GroupView
@@ -146,6 +149,8 @@ namespace Simplemize.Ui
             Theme.Changed += () => { RoundCorners(); };
             PreviewKeyDown += OnKey;
             Loaded += (s, e) => { if (!renderMode) StartBackgroundLoads(); };
+            // Display changes are confirmed on screen and go back by themselves if nobody answers.
+            if (!renderMode) env.ConfirmDisplay = (msg, secs) => Dispatcher.Invoke(() => AskKeepDisplay(msg, secs)).Result;
 
             ShowPage("overview");
             UpdateBar();

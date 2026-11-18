@@ -12,9 +12,9 @@ using Simplemize.Ui;
 [assembly: AssemblyDescription("A small, open-source Windows optimizer with a restore point before every change.")]
 [assembly: AssemblyProduct("Simplemize")]
 [assembly: AssemblyCopyright("MIT License")]
-[assembly: AssemblyVersion("1.0.2.0")]
-[assembly: AssemblyFileVersion("1.0.2.0")]
-[assembly: AssemblyInformationalVersion("1.0.2")]
+[assembly: AssemblyVersion("1.1.0.0")]
+[assembly: AssemblyFileVersion("1.1.0.0")]
+[assembly: AssemblyInformationalVersion("1.1.0")]
 // Compiled with csc directly, so state the target explicitly: it switches on .NET 4.8 behaviour (per-monitor DPI and so on).
 [assembly: System.Runtime.Versioning.TargetFramework(".NETFramework,Version=v4.8", FrameworkDisplayName = ".NET Framework 4.8")]
 
@@ -43,9 +43,9 @@ namespace Simplemize
         public static int Main(string[] argv)
         {
             args = argv ?? new string[0];
-            bool selftest = Has("--selftest"), render = Has("--render"), export = Has("--export");
+            bool selftest = Has("--selftest"), render = Has("--render"), export = Has("--export"), probe = Has("--probe-hw");
             // Tooling modes never touch the PC: they always run in the sandbox.
-            bool sandbox = Has("--sandbox") || selftest || render || export;
+            bool sandbox = Has("--sandbox") || selftest || render || export || probe;
             bool admin = IsAdmin();
 
             if (!admin && !sandbox && !Has("--no-elevate"))
@@ -113,6 +113,7 @@ namespace Simplemize
             }
 
             if (export) return Exporter.Export(catalog, Value("--export", "tweaks.json"));
+            if (probe) return Probe.Run(env, Value("--probe-hw", "probe.txt"));
             if (selftest) return SelfTest.Run(env, engine, catalog, Value("--selftest", "selftest.txt"));
 
             var app = new Application { ShutdownMode = ShutdownMode.OnMainWindowClose };

@@ -6,7 +6,7 @@ using Microsoft.Win32;
 namespace Simplemize
 {
     public enum Level { Minor, Heavy }
-    public enum Section { Performance, Debloat, Processes, Cleanup, Extras }
+    public enum Section { Performance, Hardware, Debloat, Processes, Cleanup, Extras }
     public enum TState { Off, Partial, Active, NotApplicable, Unknown }
 
     [Flags] public enum After { None = 0, Restart = 1, SignOut = 2, Explorer = 4 }
@@ -33,6 +33,11 @@ namespace Simplemize
         public bool ForeignUser;
         /// <summary>When set, Simplemize may look but not change anything (e.g. its data folder isn't safe).</summary>
         public string BlockedReason;
+        /// <summary>
+        /// Asks the person whether to keep a display change (message, seconds before it goes back by itself).
+        /// Null (self-test, tools) means keep.
+        /// </summary>
+        public Func<string, int, bool> ConfirmDisplay;
     }
 
     public sealed class ActionLine
@@ -261,6 +266,30 @@ namespace Simplemize
                 }
                 case "hiber":
                     if (c.OldEnabled) env.Sys.SetHibernation(true);
+                    break;
+                case "pwr":
+                {
+                    var scheme = new Guid(c.Path);
+                    // The plan may have been deleted since (e.g. the power plan tweak was undone): nothing to restore then.
+                    if (env.Sys.ReadPowerAC(scheme, new Guid(c.Part), new Guid(c.Name)) == null) return;
+                    env.Sys.WritePowerAC(scheme, new Guid(c.Part), new Guid(c.Name), (uint)c.OldStart);
+                    break;
+                }
+                case "nv":
+                {
+                    uint id = Convert.ToUInt32(c.Name, 16);
+                    if (c.Existed) env.Sys.NvWrite(id, unchecked((uint)c.OldStart));
+                    else env.Sys.NvReset(id);
+                    break;
+                }
+                case "display":
+                    foreach (var line in (c.Value ?? "").Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        var parts = line.Split('|');
+                        if (parts.Length != 2 || !int.TryParse(parts[1], out var hz)) continue;
+                        int rc = env.Sys.SetRefresh(parts[0], hz);
+                        if (rc != 0) env.Log.Warn("could not set " + parts[0] + " back to " + hz + " Hz (" + rc + ")");
+                    }
                     break;
                 default:
                     throw new InvalidOperationException("This change can't be undone automatically.");
@@ -619,6 +648,144 @@ namespace Simplemize
             if (!env.Sys.UninstallOneDrive(out var detail))
                 throw new InvalidOperationException("The OneDrive uninstaller reported a problem" + (string.IsNullOrWhiteSpace(detail) ? "." : ": " + detail.Trim()));
             return new Change { Type = "onedrive", Name = "OneDrive" };
+        }
+    }
+
+    /// <summary>A power plan setting, plugged-in (AC) value only, on the plan that's active when applied.</summary>
+    public sealed class PowerAC : TweakAction
+    {
+        readonly Guid sub, setting;
+        readonly uint target;
+        readonly string label, targetText;
+
+        public PowerAC(Guid sub, Guid setting, uint target, string label, string targetText)
+        {
+            this.sub = sub; this.setting = setting; this.target = target; this.label = label; this.targetText = targetText;
+        }
+
+        public override ActionLine Describe() => new ActionLine(
+            "Power plan › " + label,
+            "→ " + targetText + " when plugged in    (battery setting untouched; applies to the plan that's active)");
+
+        public override bool? IsApplied(Env env)
+        {
+            var scheme = env.Sys.ActivePowerScheme();
+            if (scheme == null) return null;
+            var v = env.Sys.ReadPowerAC(scheme.Value, sub, setting);
+            return v == null ? (bool?)null : v.Value == target;
+        }
+
+        public override Change Apply(Env env)
+        {
+            var scheme = env.Sys.ActivePowerScheme();
+            if (scheme == null) throw new InvalidOperationException("Couldn't find the active power plan.");
+            var old = env.Sys.ReadPowerAC(scheme.Value, sub, setting);
+            if (old == null || old.Value == target) return null;   // not on this PC, or already set
+            env.Sys.WritePowerAC(scheme.Value, sub, setting, target);
+            return new Change { Type = "pwr", Path = scheme.Value.ToString(), Part = sub.ToString(), Name = setting.ToString(), OldStart = (int)old.Value };
+        }
+
+        /// <summary>Sandbox seeding: put a typical Windows default in place.</summary>
+        public void SimulateDefault(Env env)
+        {
+            var scheme = env.Sys.ActivePowerScheme();
+            if (scheme != null) env.Sys.WritePowerAC(scheme.Value, sub, setting, target >= 100 ? 5u : target == 0 ? 1u : target - 1);
+        }
+
+        public override bool Owns(Change c) =>
+            c.Type == "pwr" && Guid.TryParse(c.Path, out _)
+            && string.Equals(c.Name, setting.ToString(), StringComparison.OrdinalIgnoreCase)
+            && string.Equals(c.Part, sub.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>One NVIDIA driver setting in the global profile (what NVIDIA Control Panel's Global Settings change).</summary>
+    public sealed class NvSetting : TweakAction
+    {
+        readonly uint id, target;
+        readonly string label, targetText;
+
+        public NvSetting(uint id, uint target, string label, string targetText)
+        {
+            this.id = id; this.target = target; this.label = label; this.targetText = targetText;
+        }
+
+        string Key => id.ToString("X8");
+
+        public override ActionLine Describe() => new ActionLine(
+            "NVIDIA Control Panel › Global settings › " + label,
+            "→ " + targetText + "    (driver setting 0x" + Key + ")");
+
+        public override bool? IsApplied(Env env)
+        {
+            if (!env.Sys.NvAvailable) return null;
+            var v = env.Sys.NvRead(id);
+            return v.Status == NvDrs.OK && v.Current == target;
+        }
+
+        public override Change Apply(Env env)
+        {
+            if (!env.Sys.NvAvailable) return null;
+            var v = env.Sys.NvRead(id);
+            if (v.Status == NvDrs.OK && v.Current == target) return null;
+            var ch = new Change { Type = "nv", Name = Key, Existed = v.Status == NvDrs.OK && v.UserSet, OldStart = unchecked((int)v.Current) };
+            env.Sys.NvWrite(id, target);
+            return ch;
+        }
+
+        public override bool Owns(Change c) => c.Type == "nv" && string.Equals(c.Name, Key, StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>Sandbox seeding: the driver default.</summary>
+        public void SimulateDefault(Env env) { if (env.Sys.NvAvailable) env.Sys.NvReset(id); }
+    }
+
+    /// <summary>Sets each display to the fastest refresh rate its driver offers at the current resolution.</summary>
+    public sealed class DisplayMaxRefresh : TweakAction
+    {
+        public override ActionLine Describe() => new ActionLine(
+            "Display settings",
+            "each display → the highest refresh rate it offers at its current resolution (you confirm it, or it goes back after 15 seconds)");
+
+        public override bool? IsApplied(Env env)
+        {
+            var d = env.Sys.ListDisplays();
+            if (d.Count == 0) return null;
+            return d.All(x => x.Hz >= x.BestHz);
+        }
+
+        public override Change Apply(Env env)
+        {
+            var changed = new List<string>();
+            var errors = new List<string>();
+            foreach (var d in env.Sys.ListDisplays().Where(x => x.Hz < x.BestHz))
+            {
+                int rc = env.Sys.SetRefresh(d.Device, d.BestHz);
+                if (rc != 0) { errors.Add(d.Name + ": the driver refused " + d.BestHz + " Hz (" + rc + ")"); continue; }
+                bool keep = env.ConfirmDisplay == null || env.ConfirmDisplay(
+                    d.Name + " now runs at " + d.BestHz + " Hz (it was " + d.Hz + " Hz). If the picture looks right, keep it.", 15);
+                if (!keep)
+                {
+                    env.Sys.SetRefresh(d.Device, d.Hz);
+                    errors.Add(d.Name + ": went back to " + d.Hz + " Hz");
+                    continue;
+                }
+                changed.Add(d.Device + "|" + d.Hz);
+                env.Log.Info(d.Device + " refresh rate " + d.Hz + " -> " + d.BestHz + " Hz");
+            }
+            if (changed.Count == 0)
+            {
+                if (errors.Count > 0) throw new InvalidOperationException(string.Join("; ", errors));
+                return null;
+            }
+            if (errors.Count > 0) env.Log.Warn(string.Join("; ", errors));
+            return new Change { Type = "display", Name = "refresh", Value = string.Join("\n", changed) };
+        }
+
+        public override bool Owns(Change c) => c.Type == "display";
+
+        /// <summary>Sandbox seeding: a fast monitor left at 60 Hz, the classic mistake.</summary>
+        public void SimulateDefault(Env env)
+        {
+            foreach (var d in env.Sys.ListDisplays().Where(x => x.BestHz > 60)) env.Sys.SetRefresh(d.Device, 60);
         }
     }
 

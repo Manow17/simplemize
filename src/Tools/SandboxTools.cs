@@ -28,6 +28,9 @@ namespace Simplemize
                         case ServiceStart s: env.Sys.SetServiceStart(s.Name, s.Start == 2 ? 3 : 2, false); break;
                         case TaskOff k: env.Sys.SetTask(k.Path, true); break;
                         case HibernateOff _: env.Sys.SetHibernation(true); break;
+                        case PowerAC p: p.SimulateDefault(env); break;
+                        case NvSetting n: n.SimulateDefault(env); break;
+                        case DisplayMaxRefresh d: d.SimulateDefault(env); break;
                     }
                 }
             return seeded;
@@ -46,6 +49,15 @@ namespace Simplemize
             i.Ubr = 2605;
             i.Cpu = "AMD Ryzen 7 7800X3D 8-Core Processor";
             i.Gpu = "NVIDIA GeForce RTX 4070";
+            i.Gpus = new List<string> { "NVIDIA GeForce RTX 4070" };
+            if (Environment.GetCommandLineArgs().Contains("--demo-amd"))
+            {
+                i.Cpu = "AMD Ryzen 7 7700X 8-Core Processor";
+                i.CpuVendor = "AuthenticAMD";
+                i.Gpu = "AMD Radeon RX 7800 XT";
+                i.Gpus = new List<string> { "AMD Radeon RX 7800 XT" };
+                env.Sys.NvOverride = false;
+            }
             i.RamBytes = 34_359_738_368L;
             i.IsLaptop = false;
             i.SystemOnHdd = false;

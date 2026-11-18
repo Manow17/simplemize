@@ -357,6 +357,7 @@ namespace Simplemize.Ui
         // ---- hooks for --render ---------------------------------------------------------
 
         public void ExpandForShot(string id) => rows[id].ToggleDetails();
+        public void ScrollForShot(bool end) { if (host.Content is ScrollViewer sv) { if (end) sv.ScrollToEnd(); else sv.ScrollToHome(); } }
         public void ConfirmReviewForShot() => RunApply(SelectedTweaks());
         public bool IsBusyForShot => busy;
         public void CloseOverlayForShot() => HideOverlay();
@@ -371,6 +372,44 @@ namespace Simplemize.Ui
                 Toast("Restarting in 10 seconds. Save anything you have open.");
             }
             catch (Exception ex) { Toast("Couldn't restart: " + ex.Message, "Bad"); }
+        }
+
+        // ---- question: keep the new refresh rate? (goes back by itself) -----------------
+
+        Task<bool> AskKeepDisplay(string message, int seconds)
+        {
+            var tcs = new TaskCompletionSource<bool>();
+            var previous = overlay.Children.Count > 1 ? overlay.Children[1] : null;
+            var card = Card(520);
+            var top = CardTitle("Display", "Keep this refresh rate?", null);
+            var body = new StackPanel { Margin = new Thickness(30, 12, 30, 24) };
+            body.Children.Add(Kit.Text(message, 13.5, "Ink"));
+            var countdown = Kit.Mono("", 12, "Accent");
+            countdown.Margin = new Thickness(0, 14, 0, 0);
+            body.Children.Add(countdown);
+
+            int left = seconds;
+            var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            void Finish(bool keep)
+            {
+                timer.Stop();
+                overlay.Children.Remove(card);
+                if (previous != null && !overlay.Children.Contains(previous)) overlay.Children.Add(previous);
+                tcs.TrySetResult(keep);
+            }
+            void Tick() => countdown.Text = "Going back to the old rate in " + left + " s if you don't answer.";
+            timer.Tick += (s, e) => { left--; if (left <= 0) Finish(false); else Tick(); };
+            Tick();
+
+            var keepBtn = Kit.Button("Keep it", "Primary", () => Finish(true));
+            var back = Kit.Button("Go back", "Secondary", () => Finish(false));
+            card.Child = CardLayout(top, body, FooterGrid(null, back, keepBtn));
+            if (previous != null) overlay.Children.Remove(previous);
+            overlay.Children.Add(card);
+            overlay.Visibility = Visibility.Visible;
+            keepBtn.Focus();
+            timer.Start();
+            return tcs.Task;
         }
 
         // ---- question: continue without a restore point? ------------------------------

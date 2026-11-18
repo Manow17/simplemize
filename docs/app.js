@@ -3,7 +3,7 @@
 
   var data = window.SIMPLEMIZE || { version: '1.0.0', tweaks: [] };
   var tweaks = data.tweaks;
-  var SECTIONS = ['Performance', 'Debloat', 'Processes', 'Cleanup', 'Extras'];
+  var SECTIONS = ['Performance', 'Hardware', 'Debloat', 'Processes', 'Cleanup', 'Extras'];
   var state = { section: 'Performance', level: 'all', q: '' };
 
   // ---- tiny DOM helper -------------------------------------------------------------

@@ -50,12 +50,12 @@
   <section class="hero wrap">
     <p class="eyebrow"><b>01</b> / Windows 10 &amp; 11 optimizer</p>
     <h1>Switch off the parts of Windows you never asked for.</h1>
-    <p class="lede">Simplemize is a small, free, open-source tool that debloats Windows, trims what runs in the background and tunes it for lower input delay. It makes a restore point before it touches anything, and it tells you in plain words what every switch does.</p>
+    <p class="lede">Simplemize is a small, free, open-source tool that debloats Windows, trims what runs in the background and tunes Windows, your processor, your NVIDIA driver and your display for lower input delay. It makes a restore point before it touches anything, and it tells you in plain words what every switch does.</p>
     <div class="cta">
       <a class="btn" href="https://github.com/Manow17/simplemize/releases/latest/download/Simplemize.exe">Download Simplemize.exe</a>
       <a class="btn ghost" href="https://github.com/Manow17/simplemize">View the source</a>
     </div>
-    <p class="meta mono">v<span data-version>1.0.2</span> · single 309 KB file · no installer, no account, no telemetry</p>
+    <p class="meta mono">v<span data-version>1.1.0</span> · single 345 KB file · no installer, no account, no telemetry</p>
 
     <div class="cmd">
       <span class="label">Or skip the "Windows protected your PC" pop-up: paste this into PowerShell</span>
@@ -90,7 +90,7 @@
       <div class="step">
         <span class="n mono">1</span>
         <h3>Pick</h3>
-        <p>Start from a preset (Light touch, Gamer or Stripped) or go page by page: Performance, Debloat, Processes, Cleanup, Extras. Things already active on your PC are marked, so you don't apply them twice.</p>
+        <p>Start from a preset (Light touch, Gamer or Stripped) or go page by page: Performance, Hardware, Debloat, Processes, Cleanup, Extras. Things already active on your PC are marked, so you don't apply them twice.</p>
       </div>
       <div class="step">
         <span class="n mono">2</span>
@@ -109,8 +109,19 @@
   </section>
 
   <!-- 03 -->
+  <section class="wrap block" id="hardware">
+    <p class="eyebrow"><b>03</b> / Beyond Windows</p>
+    <h2>Your processor, graphics driver and display, too.</h2>
+    <p class="lede narrow">The Hardware page reaches what Windows' own settings don't: how your Intel or AMD processor boosts and parks cores, NVIDIA's global driver settings (Prefer maximum performance, Low Latency Mode), displays left below their refresh rate, and USB and PCI Express power saving. Power changes only apply while the PC is plugged in. AMD Radeon settings can only be changed in AMD's own app, so Simplemize gives you a checklist instead of touching driver data.</p>
+    <figure class="shot pair">
+      <img src="img/hardware-light.png" data-light="img/hardware-light.png" data-dark="img/hardware-dark.png" width="2400" height="1600" loading="lazy"
+           alt="The Hardware page: detected processor, graphics card and display, with CPU boost and core parking settings.">
+    </figure>
+  </section>
+
+  <!-- 04 -->
   <section class="wrap block" id="levels">
-    <p class="eyebrow"><b>03</b> / Minor or heavy</p>
+    <p class="eyebrow"><b>04</b> / Minor or heavy</p>
     <h2>Every change wears a label.</h2>
     <div class="levels">
       <div>
@@ -126,7 +137,7 @@
 
   <!-- 04 -->
   <section class="wrap block" id="tweaks">
-    <p class="eyebrow"><b>04</b> / Every change, in plain words</p>
+    <p class="eyebrow"><b>05</b> / Every change, in plain words</p>
     <h2>Here's everything it can do.</h2>
     <p class="lede narrow">This list is generated from the app itself, so it always matches what Simplemize actually changes. Open any item to see the exact values.</p>
 
@@ -146,7 +157,7 @@
 
   <!-- 05 -->
   <section class="wrap block" id="safety">
-    <p class="eyebrow"><b>05</b> / How to go back</p>
+    <p class="eyebrow"><b>06</b> / How to go back</p>
     <h2>Three ways back, from one setting to everything.</h2>
     <div class="ways">
       <div class="way">
@@ -180,7 +191,7 @@
 
   <!-- 06 -->
   <section class="wrap block" id="honest">
-    <p class="eyebrow"><b>06</b> / Straight talk</p>
+    <p class="eyebrow"><b>07</b> / Straight talk</p>
     <h2>What it won't do.</h2>
     <div class="nots">
       <div><h3>Double your FPS</h3><p>No settings tweak does. Simplemize removes what gets in a game's way: power saving, background work, recording hooks and scheduling defaults built for office PCs. The difference is largest on PCs that were never tuned. The one big lever, turning off Memory Integrity, is clearly marked as a security trade-off.</p></div>
@@ -192,7 +203,7 @@
 
   <!-- 07 -->
   <section class="wrap block" id="faq">
-    <p class="eyebrow"><b>07</b> / Questions</p>
+    <p class="eyebrow"><b>08</b> / Questions</p>
     <h2>Before you run it.</h2>
     <div class="faq">
       <details>

@@ -56,13 +56,18 @@ namespace Simplemize
             w.LoadAllNow();
             Pump();
 
-            var pages = dark ? new[] { "overview", "performance", "debloat" }
-                             : new[] { "overview", "performance", "debloat", "processes", "cleanup", "extras", "startup", "undo" };
+            var pages = dark ? new[] { "overview", "performance", "hardware", "debloat" }
+                             : new[] { "overview", "performance", "hardware", "debloat", "processes", "cleanup", "extras", "startup", "undo" };
             foreach (var p in pages)
             {
                 w.ShowPage(p);
                 Save(w, Path.Combine(dir, pfx + p + ".png"), scale);
             }
+
+            w.ShowPage("hardware");
+            w.ScrollForShot(true);
+            Save(w, Path.Combine(dir, pfx + "hardware-bottom.png"), scale);
+            w.ScrollForShot(false);
 
             // details sheet open
             w.ShowPage("performance");
