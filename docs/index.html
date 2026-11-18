@@ -55,7 +55,7 @@
       <a class="btn" href="https://github.com/Manow17/simplemize/releases/latest/download/Simplemize.exe">Download Simplemize.exe</a>
       <a class="btn ghost" href="https://github.com/Manow17/simplemize">View the source</a>
     </div>
-    <p class="meta mono">v<span data-version>1.1.0</span> · single 345 KB file · no installer, no account, no telemetry</p>
+    <p class="meta mono">v<span data-version>1.2.0</span> · 358 KB · installs in one click, no account, no telemetry</p>
 
     <div class="cmd">
       <span class="label">Or skip the "Windows protected your PC" pop-up: paste this into PowerShell</span>
@@ -63,7 +63,7 @@
         <code id="cmd">irm https://manow17.github.io/simplemize/run.ps1 | iex</code>
         <button type="button" class="copy" data-copy="cmd">Copy</button>
       </div>
-      <p class="cmd-note">It downloads the latest release from GitHub, checks it against the published SHA-256 checksum, and starts it. <a href="run.ps1">Read the script</a> first, it's short.</p>
+      <p class="cmd-note">It downloads the latest release from GitHub, checks it against the published SHA-256 checksum, installs it to your Start menu and starts it. Run it again any time to update. <a href="run.ps1">Read the script</a> first, it's short.</p>
     </div>
 
     <figure class="shot">
@@ -219,11 +219,11 @@
       </details>
       <details>
         <summary>Does it install anything or run in the background?</summary>
-        <p>No. It's a single file. It doesn't add a service, a scheduled task or a startup entry, and it doesn't connect to the internet. When you close it, it's gone.</p>
+        <p>Only if you want it to: <b>Install</b> copies it to your apps folder and adds a Start menu shortcut and an entry in Settings › Apps, so you can find it by searching. It never adds a service, a scheduled task or a startup entry, and it doesn't connect to the internet. When you close it, nothing of it keeps running.</p>
       </details>
       <details>
         <summary>How do I remove Simplemize?</summary>
-        <p>If you want your old settings back, use Undo everything first. Then delete <code>Simplemize.exe</code> and the folder <code>C:\ProgramData\Simplemize</code>.</p>
+        <p>If you want your old settings back, use Undo everything first. Then uninstall it like any app: <b>Settings › Apps › Simplemize › Uninstall</b>, or the button at the bottom of the Undo &amp; restore page. The backup in <code>C:\ProgramData\Simplemize</code> stays so a reinstall can still undo; delete that folder too if you want every trace gone.</p>
       </details>
       <details>
         <summary>Will it work on my laptop?</summary>

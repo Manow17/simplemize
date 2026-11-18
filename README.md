@@ -4,7 +4,7 @@
 
 Simplemize is a small, free, open-source optimizer for Windows 10 and 11. It debloats Windows, trims what runs in the background and tunes it for lower input delay. It makes a System Restore point before it touches anything, saves the original value of every setting it changes, and explains every switch in plain words.
 
-**[Download Simplemize.exe](https://github.com/Manow17/simplemize/releases/latest/download/Simplemize.exe)** · [Website](https://manow17.github.io/simplemize/) · single 345 KB file, no installer, no account, no telemetry
+**[Download Simplemize.exe](https://github.com/Manow17/simplemize/releases/latest/download/Simplemize.exe)** · [Website](https://manow17.github.io/simplemize/) · installs in one click (no admin needed), no account, no telemetry
 
 ![The Simplemize window](docs/img/overview-light.png)
 
@@ -47,6 +47,10 @@ Removed apps can't be restored by Simplemize or by System Restore; they're free 
 - Clear the shader cache or Prefetch (that makes games stutter and apps load slower).
 - Run in the background or connect to the internet.
 
+## Install and uninstall
+
+Running the downloaded exe? Click **Install** at the top of the Overview page: it copies Simplemize to `%LOCALAPPDATA%\Programs\Simplemize` and adds a Start menu shortcut and an entry in **Settings › Apps**. Uninstall from there or from the Undo & restore page. Your backup in `C:\ProgramData\Simplemize` is kept, so undo still works after a reinstall.
+
 ## First run
 
 **No pop-up:** paste this into PowerShell or Windows Terminal (<kbd>Win</kbd>+<kbd>X</kbd> › Terminal):
@@ -55,7 +59,7 @@ Removed apps can't be restored by Simplemize or by System Restore; they're free 
 irm https://manow17.github.io/simplemize/run.ps1 | iex
 ```
 
-It downloads the latest release, checks it against the SHA-256 checksum published with the release, and starts it ([read the script](docs/run.ps1)). Files downloaded by PowerShell aren't tagged as "from the internet", so SmartScreen doesn't step in.
+It downloads the latest release, checks it against the SHA-256 checksum published with the release, installs it to your Start menu and Settings › Apps (no admin needed) and starts it. Run it again any time to update ([read the script](docs/run.ps1)). Files downloaded by PowerShell aren't tagged as "from the internet", so SmartScreen doesn't step in.
 
 **Downloaded in a browser instead?** SmartScreen may say *"Windows protected your PC"* because the exe isn't signed with a paid code-signing certificate. Click **More info › Run anyway**, or build it yourself.
 

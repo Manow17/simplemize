@@ -2,9 +2,10 @@
 #
 #   irm https://manow17.github.io/simplemize/run.ps1 | iex
 #
-# Downloads the latest Simplemize.exe from GitHub Releases into %LOCALAPPDATA%\Simplemize,
-# checks it against the SHA-256 checksum published with the release, and starts it.
-# Nothing else is downloaded or changed. Read it before you run it: it's short.
+# Downloads the latest Simplemize.exe from GitHub Releases, checks it against the SHA-256 checksum
+# published with the release, installs it for your account (%LOCALAPPDATA%\Programs\Simplemize, a Start
+# menu shortcut and an entry in Settings > Apps; no administrator rights needed) and starts it.
+# Run it again any time to update. Nothing else is downloaded or changed. Read it before you run it: it's short.
 
 & {
     $ErrorActionPreference = 'Stop'
@@ -12,7 +13,7 @@
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
     $base = 'https://github.com/Manow17/simplemize/releases/latest/download'
-    $dir  = Join-Path $env:LOCALAPPDATA 'Simplemize'
+    $dir  = Join-Path $env:LOCALAPPDATA 'Programs\Simplemize'
     $exe  = Join-Path $dir 'Simplemize.exe'
     $new  = "$exe.download"
     $sum  = "$exe.sha256"
@@ -46,6 +47,11 @@
         return
     }
 
+    # Start menu shortcut + Settings > Apps entry (the app does this itself; no admin needed)
+    Start-Process -FilePath $exe -ArgumentList '--install', '--quiet' -Wait
+    # earlier versions of this script kept a copy here
+    Remove-Item -Path (Join-Path $env:LOCALAPPDATA 'Simplemize\Simplemize.exe') -Force -ErrorAction SilentlyContinue
+    Write-Host '  Installed. Next time, just search for Simplemize in Start.' -ForegroundColor DarkGray
     Write-Host '  Starting Simplemize. Windows will ask for administrator rights.' -ForegroundColor DarkGray
     Write-Host ''
     Start-Process -FilePath $exe

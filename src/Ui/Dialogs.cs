@@ -374,6 +374,24 @@ namespace Simplemize.Ui
             catch (Exception ex) { Toast("Couldn't restart: " + ex.Message, "Bad"); }
         }
 
+        // ---- simple yes / no -------------------------------------------------------------
+
+        Task<bool> AskYesNo(string eyebrow, string title, string body, string yes, string no)
+        {
+            var tcs = new TaskCompletionSource<bool>();
+            var card = Card(540);
+            var top = CardTitle(eyebrow, title, null);
+            var text = Kit.Text(body, 13.5, "Ink");
+            text.Margin = new Thickness(30, 12, 30, 24);
+            void Finish(bool answer) { HideOverlay(); tcs.TrySetResult(answer); }
+            var noBtn = Kit.Button(no, "Secondary", () => Finish(false));
+            var yesBtn = Kit.Button(yes, "Primary", () => Finish(true));
+            card.Child = CardLayout(top, text, FooterGrid(null, noBtn, yesBtn));
+            ShowOverlay(card);
+            noBtn.Focus();
+            return tcs.Task;
+        }
+
         // ---- question: keep the new refresh rate? (goes back by itself) -----------------
 
         Task<bool> AskKeepDisplay(string message, int seconds)

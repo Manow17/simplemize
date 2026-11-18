@@ -302,6 +302,9 @@ namespace Simplemize.Ui
             c.Children.Add(Header("01", "Overview", hello + " Here's your PC right now.",
                 "Simplemize switches off the parts of Windows you never asked for. Start with a preset or go through the pages on the left. Nothing changes until you review the list and press Apply."));
 
+            var install = InstallBox();
+            if (install != null) c.Children.Add(install);
+
             // live numbers
             var snap = lastSnap;
             var stats = new Grid();
@@ -650,7 +653,100 @@ namespace Simplemize.Ui
             folder.HorizontalAlignment = HorizontalAlignment.Left;
             folder.Margin = new Thickness(0, 8, 0, 0);
             c.Children.Add(folder);
+
+            // uninstalling Simplemize itself
+            var paths = Installer.Paths.Default;
+            if (!env.Sandbox && !env.Demo && Installer.IsInstalled(paths))
+            {
+                c.Children.Add(GroupHeader("Remove Simplemize", out _, 46));
+                c.Children.Add(Kit.Text("Simplemize is installed in " + paths.InstallDir + ". Uninstalling removes the program and its Start menu shortcut. The backup above stays, so undo still works if you reinstall. Want your old settings back? Use Undo everything first.", 13.5, "Ink2").Margin(0, 14, 0, 12));
+                var un = Kit.Button("Uninstall Simplemize", "Secondary", async () =>
+                {
+                    if (!await AskYesNo("Uninstall", "Remove Simplemize?", "The program and its Start menu shortcut are removed. Your backup in " + env.DataDir + " stays.", "Uninstall", "Keep it")) return;
+                    try
+                    {
+                        bool closing = Installer.Uninstall(paths, env.Log);
+                        if (closing)
+                        {
+                            Toast("Simplemize was removed. It closes now.");
+                            var t = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+                            t.Tick += (s, e) => { t.Stop(); Close(); };
+                            t.Start();
+                        }
+                        else { Toast("The installed copy was removed."); ShowPage("undo"); }
+                    }
+                    catch (Exception ex) { Toast("Couldn't uninstall: " + ex.Message, "Bad"); }
+                });
+                un.HorizontalAlignment = HorizontalAlignment.Left;
+                c.Children.Add(un);
+            }
             return PageScroll(c);
+        }
+
+        /// <summary>Offers to install (or update) Simplemize when it runs from a downloaded copy.</summary>
+        FrameworkElement InstallBox()
+        {
+            // (dev: SIMPLEMIZE_PREVIEW_INSTALL=1 shows the box in renders, as on a PC where it isn't installed)
+            bool preview = env.Demo && Environment.GetEnvironmentVariable("SIMPLEMIZE_PREVIEW_INSTALL") == "1";
+            if ((env.Sandbox || env.Demo) && !preview) return null;
+            var paths = Installer.Paths.Default;
+            if (!preview && Installer.RunningFromInstall(paths)) return null;
+            var installed = !preview && Installer.IsInstalled(paths) ? Installer.InstalledVersion(paths) : null;
+            var running = Installer.RunningVersion;
+
+            string title, body, action;
+            if (installed == null)
+            {
+                title = "Install Simplemize";
+                body = "Right now Simplemize is just a file you downloaded. Install it and you can find it by searching Start next time: it's copied to your apps folder and gets a Start menu shortcut and an entry in Settings › Apps. Nothing else changes, and it uninstalls like any app.";
+                action = "Install";
+            }
+            else if (running > installed)
+            {
+                title = "Update the installed Simplemize";
+                body = "This is version " + running.ToString(3) + "; the installed copy is " + installed.ToString(3) + ". Update it so the Start menu opens this version.";
+                action = "Update";
+            }
+            else
+            {
+                var note = Kit.Note("Simplemize is already installed (version " + installed.ToString(3) + "). Next time, open it from Start. You can delete this downloaded copy.", "Ink3", 12.5);
+                note.Margin = new Thickness(0, 26, 0, 0);
+                return note;
+            }
+
+            var sp = new StackPanel();
+            sp.Children.Add(Kit.Display(title, 18));
+            sp.Children.Add(Kit.Text(body, 13.5, "Ink2").Margin(0, 6, 0, 14));
+            var desktop = new CheckBox { IsChecked = false, VerticalAlignment = VerticalAlignment.Center };
+            desktop.SetResourceReference(StyleProperty, "Check");
+            var desktopLabel = Kit.Text("Also put a shortcut on the desktop", 13, "Ink", "FontBody", null, false);
+            desktopLabel.VerticalAlignment = VerticalAlignment.Center;
+            desktopLabel.Margin = new Thickness(8, 0, 0, 0);
+            desktopLabel.MouseLeftButtonUp += (s, e) => desktop.IsChecked = !(desktop.IsChecked == true);
+            var go = Kit.Button(action, "Primary", null);
+            go.Margin = new Thickness(0, 0, 22, 0);
+            go.Click += (s, e) =>
+            {
+                try
+                {
+                    Installer.Install(paths, desktop.IsChecked == true, env.Log);
+                    Toast(action == "Install"
+                        ? "Installed. Next time, search for Simplemize in Start. You can delete the file you downloaded."
+                        : "Updated. The Start menu now opens version " + running.ToString(3) + ".");
+                    ShowPage("overview");
+                }
+                catch (Exception ex) { Toast("Couldn't " + action.ToLowerInvariant() + ": " + ex.Message, "Bad"); }
+            };
+            if (env.ForeignUser)
+            {
+                go.IsEnabled = false;
+                go.ToolTip = "Simplemize runs as a different account than the one signed in, so it would install into that account. Start it normally to install.";
+            }
+            sp.Children.Add(Kit.Row(go, desktop, desktopLabel));
+            var box = Kit.Box(sp, "AccentSoft", "Accent", 20);
+            box.BorderThickness = new Thickness(1.5);
+            box.Margin = new Thickness(0, 26, 0, 0);
+            return box;
         }
 
         void FillRestorePoints(StackPanel box)

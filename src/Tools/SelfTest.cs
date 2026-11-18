@@ -209,6 +209,31 @@ namespace Simplemize
                 env.Sys.SetServiceStart(eu.Name, eu.Start, eu.Delayed);
             }
 
+            // 7. install, reinstall and uninstall, into a scratch folder (never the real Start menu)
+            var iroot = Path.Combine(Path.GetTempPath(), "simplemize-install-" + Guid.NewGuid().ToString("N").Substring(0, 8));
+            var ip = new Installer.Paths
+            {
+                InstallDir = Path.Combine(iroot, "Programs", "Simplemize"),
+                StartMenuLink = Path.Combine(iroot, "Start", "Simplemize.lnk"),
+                DesktopLink = Path.Combine(iroot, "Desktop", "Simplemize.lnk"),
+                UninstallKey = null,
+            };
+            ip.Exe = Path.Combine(ip.InstallDir, "Simplemize.exe");
+            try
+            {
+                Installer.Install(ip, true, env.Log);
+                Check(File.Exists(ip.Exe) && new FileInfo(ip.Exe).Length == new FileInfo(Installer.RunningExe).Length, "install copies the program");
+                Check(string.Equals(Installer.ShortcutTarget(ip.StartMenuLink), ip.Exe, StringComparison.OrdinalIgnoreCase), "Start menu shortcut points at the installed copy");
+                Check(File.Exists(ip.DesktopLink), "desktop shortcut is added when asked");
+                Check(Installer.IsInstalled(ip) && Installer.InstalledVersion(ip) == Installer.RunningVersion, "installed version is detected (" + Installer.InstalledVersion(ip) + ")");
+                Installer.Install(ip, false, env.Log);
+                Check(!File.Exists(ip.DesktopLink) && File.Exists(ip.StartMenuLink), "reinstalling without the desktop option removes only that shortcut");
+                bool scheduled = Installer.Uninstall(ip, env.Log);
+                Check(!scheduled && !File.Exists(ip.Exe) && !File.Exists(ip.StartMenuLink), "uninstall removes the program and its shortcuts");
+            }
+            catch (Exception ex) { Check(false, "install scenario crashed: " + ex.Message); }
+            finally { try { Directory.Delete(iroot, true); } catch { } }
+
             fails += f;
             passes += p;
         }

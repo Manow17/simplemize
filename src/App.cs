@@ -12,9 +12,9 @@ using Simplemize.Ui;
 [assembly: AssemblyDescription("A small, open-source Windows optimizer with a restore point before every change.")]
 [assembly: AssemblyProduct("Simplemize")]
 [assembly: AssemblyCopyright("MIT License")]
-[assembly: AssemblyVersion("1.1.0.0")]
-[assembly: AssemblyFileVersion("1.1.0.0")]
-[assembly: AssemblyInformationalVersion("1.1.0")]
+[assembly: AssemblyVersion("1.2.0.0")]
+[assembly: AssemblyFileVersion("1.2.0.0")]
+[assembly: AssemblyInformationalVersion("1.2.0")]
 // Compiled with csc directly, so state the target explicitly: it switches on .NET 4.8 behaviour (per-monitor DPI and so on).
 [assembly: System.Runtime.Versioning.TargetFramework(".NETFramework,Version=v4.8", FrameworkDisplayName = ".NET Framework 4.8")]
 
@@ -47,6 +47,31 @@ namespace Simplemize
             // Tooling modes never touch the PC: they always run in the sandbox.
             bool sandbox = Has("--sandbox") || selftest || render || export || probe;
             bool admin = IsAdmin();
+
+            // Install / uninstall need no administrator rights (everything lives in the user's own profile).
+            if (Has("--install"))
+            {
+                try { Installer.Install(Installer.Paths.Default, Has("--desktop"), null); return 0; }
+                catch (Exception ex)
+                {
+                    if (!Has("--quiet")) MessageBox.Show("Couldn't install Simplemize: " + ex.Message, "Simplemize", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return 1;
+                }
+            }
+            if (Has("--uninstall"))
+            {
+                bool quiet = Has("--quiet");
+                if (!quiet && MessageBox.Show(
+                        "Remove Simplemize from this PC?\n\n" +
+                        "The Start menu shortcut and the program are removed. Your backup in C:\\ProgramData\\Simplemize stays, " +
+                        "so you can still undo changes if you reinstall.\n\n" +
+                        "Want your old settings back first? Open Simplemize › Undo & restore › Undo everything, then uninstall.",
+                        "Simplemize", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+                    return 0;
+                Installer.Uninstall(Installer.Paths.Default, null);
+                if (!quiet) MessageBox.Show("Simplemize was removed.", "Simplemize", MessageBoxButton.OK, MessageBoxImage.Information);
+                return 0;
+            }
 
             if (!admin && !sandbox && !Has("--no-elevate"))
             {
